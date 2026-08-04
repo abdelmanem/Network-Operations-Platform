@@ -62,6 +62,34 @@
 - `serializer.py` JSON serialization helpers
 - `validation.py` timestamp, identity, and version validation
 
+## `backend/app/transports`
+
+- `base.py` abstract transport interface and capability model
+- `circuit_breaker.py` circuit breaker state machine
+- `connection_pool.py` transport session pooling
+- `credentials.py` credential resolution framework
+- `manager.py` transport orchestration
+- `rate_limiter.py` token bucket rate limiting
+- `registry.py` transport registry
+- `retry.py` retry policy and backoff support
+- `session.py` transport session lifecycle base class
+- `timeout.py` timeout configuration model
+
+## `backend/app/transports/ssh`
+
+- `base.py` abstract SSH transport base class
+- `session.py` abstract SSH session base class
+
+## `backend/app/transports/snmp`
+
+- `base.py` abstract SNMP transport base class
+- `session.py` abstract SNMP session base class
+
+## `backend/app/transports/http`
+
+- `base.py` abstract HTTP transport base class
+- `session.py` abstract HTTP session base class
+
 ## `backend/app/cache`
 
 - `redis.py` cache backends, fallback behavior, and cache decorators
