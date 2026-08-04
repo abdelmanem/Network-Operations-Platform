@@ -3,7 +3,8 @@
 Network Operations Platform is an enterprise framework for validating Cisco network
 infrastructure against NetBox Community v4.6.7.
 
-This repository currently contains the Sprint 1 foundation and the Milestone 2 core framework:
+This repository currently contains the Sprint 1 foundation, the Milestone 2 core
+framework, and the Milestone 3 NetBox source-of-truth integration boundary:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -12,6 +13,8 @@ This repository currently contains the Sprint 1 foundation and the Milestone 2 c
 - structured JSON logging
 - `/health` endpoint
 - reusable core, domain, model, repository, service, event, and dependency layers
+- NetBox integration client, cache, pagination, retry, and mapping layers
+- canonical inventory domain models and inventory synchronization service
 
 ## Requirements
 
@@ -56,6 +59,9 @@ Expected response:
 - `backend/app/models/` SQLAlchemy base model and common mixins
 - `backend/app/repositories/` repository and unit-of-work abstractions
 - `backend/app/services/` base service support and helpers
+- `backend/app/integrations/netbox/` NetBox REST client, endpoint registry, cache, pagination, and mapping
+- `backend/app/cache/` cache adapters and decorators
+- `backend/app/inventory/` canonical inventory entities, DTOs, mapping, and validation
 - `backend/app/events/` event definitions, dispatcher, and registration
 - `backend/app/dependencies/` dependency injection providers
 - `backend/app/api/` API routing
@@ -67,5 +73,9 @@ Expected response:
 Milestone 2 establishes the internal application framework only. It intentionally
 does not implement NetBox integration, Cisco collectors, compliance rules, or
 report generation.
+
+Milestone 3 establishes the read-only NetBox integration boundary and canonical
+inventory model. It intentionally does not communicate with Cisco devices, run
+compliance logic, or persist inventory data.
 
 The detailed package map lives in `docs/project-structure.md`.

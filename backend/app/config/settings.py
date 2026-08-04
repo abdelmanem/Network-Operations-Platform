@@ -22,8 +22,20 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://nop:nop_password@localhost:5432/nop"
     )
     redis_url: str = Field(default="redis://localhost:6379/0")
-    netbox_url: str = Field(default="")
-    netbox_token: str = Field(default="")
+    cache_default_ttl_seconds: int = 300
+    netbox_base_url: str = Field(default="", validation_alias="NETBOX_URL")
+    netbox_token: str = Field(default="", validation_alias="NETBOX_TOKEN")
+    netbox_expected_version: str = "4.6.7"
+    netbox_timeout_seconds: float = 10.0
+    netbox_page_size: int = 100
+    netbox_retry_max_attempts: int = 4
+    netbox_retry_base_delay_seconds: float = 0.5
+
+    @property
+    def netbox_url(self) -> str:
+        """Backward-compatible NetBox base URL alias."""
+
+        return self.netbox_base_url
 
 
 @lru_cache(maxsize=1)

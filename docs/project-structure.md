@@ -31,7 +31,32 @@
 ## `backend/app/services`
 
 - `base.py` base service and dependency context
+- `inventory.py` inventory synchronization service
 - `utils.py` reusable service helpers
+
+## `backend/app/cache`
+
+- `redis.py` cache backends, fallback behavior, and cache decorators
+
+## `backend/app/integrations/netbox`
+
+- `authentication.py` token and OAuth-compatible auth strategies
+- `cache.py` response cache keys and helpers
+- `client.py` reusable NetBox REST client
+- `endpoints.py` typed REST endpoint registry
+- `exceptions.py` NetBox-specific exception hierarchy
+- `mapper.py` transformation from NetBox payloads to canonical inventory models
+- `models.py` typed NetBox payloads and collection responses
+- `pagination.py` paginated list handling
+- `retry.py` retry policy and backoff support
+- `service.py` high-level NetBox integration service
+
+## `backend/app/inventory`
+
+- `dto.py` immutable inventory snapshot transfer object
+- `entities.py` canonical inventory entities
+- `mapper.py` mapping between NetBox payloads and canonical inventory snapshots
+- `validation.py` payload, schema, and version validation
 
 ## `backend/app/events`
 
@@ -45,4 +70,3 @@
 - `application.py` request-scoped application container access
 - `database.py` database session dependency
 - `settings.py` application settings dependency
-
