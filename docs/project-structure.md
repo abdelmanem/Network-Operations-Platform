@@ -34,6 +34,34 @@
 - `inventory.py` inventory synchronization service
 - `utils.py` reusable service helpers
 
+## `backend/app/discovery`
+
+- `capabilities.py` collector capability definitions
+- `context.py` discovery target and execution context
+- `engine.py` discovery engine entrypoint
+- `filters.py` reusable discovery filters
+- `pipeline.py` discovery orchestration pipeline
+- `registry.py` discovery pipeline registry
+- `scheduler.py` discovery run scheduler
+- `statistics.py` discovery metrics tracking
+
+## `backend/app/collectors`
+
+- `base.py` abstract collector SDK
+- `capability.py` collector capability re-export
+- `context.py` collector execution context
+- `registry.py` collector registry
+- `result.py` collector result model
+
+## `backend/app/snapshot`
+
+- `entities.py` immutable snapshot entities
+- `mapper.py` entity-to-model conversion helpers
+- `models.py` immutable Pydantic snapshot models
+- `repository.py` snapshot repository protocol
+- `serializer.py` JSON serialization helpers
+- `validation.py` timestamp, identity, and version validation
+
 ## `backend/app/cache`
 
 - `redis.py` cache backends, fallback behavior, and cache decorators

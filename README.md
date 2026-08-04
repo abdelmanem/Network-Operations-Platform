@@ -4,7 +4,8 @@ Network Operations Platform is an enterprise framework for validating Cisco netw
 infrastructure against NetBox Community v4.6.7.
 
 This repository currently contains the Sprint 1 foundation, the Milestone 2 core
-framework, and the Milestone 3 NetBox source-of-truth integration boundary:
+framework, the Milestone 3 NetBox source-of-truth integration boundary, and the
+Milestone 4 discovery and snapshot framework:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -15,6 +16,7 @@ framework, and the Milestone 3 NetBox source-of-truth integration boundary:
 - reusable core, domain, model, repository, service, event, and dependency layers
 - NetBox integration client, cache, pagination, retry, and mapping layers
 - canonical inventory domain models and inventory synchronization service
+- discovery engine, collector SDK, and immutable snapshot framework
 
 ## Requirements
 
@@ -77,5 +79,9 @@ report generation.
 Milestone 3 establishes the read-only NetBox integration boundary and canonical
 inventory model. It intentionally does not communicate with Cisco devices, run
 compliance logic, or persist inventory data.
+
+Milestone 4 establishes the reusable discovery pipeline, collector registry,
+collector capability model, and immutable snapshot framework. It intentionally
+does not execute vendor-specific commands or connect to Cisco devices.
 
 The detailed package map lives in `docs/project-structure.md`.
