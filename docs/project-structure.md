@@ -90,6 +90,23 @@
 - `base.py` abstract HTTP transport base class
 - `session.py` abstract HTTP session base class
 
+## `backend/app/parsers`
+
+- `base.py` abstract parser interface
+- `context.py` parser execution context and input formats
+- `exceptions.py` parser exception hierarchy
+- `pipeline.py` parser orchestration pipeline
+- `registry.py` parser registry
+- `result.py` structured parser output models
+
+## `backend/app/normalization`
+
+- `engine.py` normalization orchestration engine
+- `mapper.py` parser-to-snapshot mapping helpers
+- `registry.py` normalization rule registry
+- `rules.py` normalization rule protocol
+- `validator.py` normalization validation helpers
+
 ## `backend/app/cache`
 
 - `redis.py` cache backends, fallback behavior, and cache decorators

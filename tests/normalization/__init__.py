@@ -1,0 +1,1 @@
+"""Normalization framework tests."""
