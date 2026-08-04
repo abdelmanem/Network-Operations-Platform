@@ -6,7 +6,8 @@ infrastructure against NetBox Community v4.6.7.
 This repository currently contains the Sprint 1 foundation, the Milestone 2 core
 framework, the Milestone 3 NetBox source-of-truth integration boundary, the
 Milestone 4 discovery and snapshot framework, and the Milestone 5 reusable
-transport framework, and the Milestone 6 parser and normalization framework:
+transport framework, the Milestone 6 parser and normalization framework, and
+the Milestone 7 compliance domain model:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -20,6 +21,7 @@ transport framework, and the Milestone 6 parser and normalization framework:
 - discovery engine, collector SDK, and immutable snapshot framework
 - reusable transport manager, registry, pooling, retries, and lifecycle support
 - parser registry, parser pipeline, and normalization engine for canonical models
+- immutable compliance rules, policies, findings, evidence, and comparison results
 
 ## Requirements
 
@@ -97,5 +99,9 @@ Milestone 6 establishes the parser and normalization framework that converts
 raw transport output into canonical snapshot entities. It intentionally does not
 execute vendor-specific commands, perform network access, or apply business
 rules.
+
+Milestone 7 establishes the reusable compliance domain model, including rules,
+policies, findings, evidence, severity, and comparison results. It intentionally
+does not execute evaluation logic, transport operations, or reporting.
 
 The detailed package map lives in `docs/project-structure.md`.

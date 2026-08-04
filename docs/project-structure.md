@@ -107,6 +107,22 @@
 - `rules.py` normalization rule protocol
 - `validator.py` normalization validation helpers
 
+## `backend/app/compliance`
+
+- `__init__.py` compliance domain exports
+- `domain/entities.py` immutable compliance entity base class
+- `domain/enums.py` domain-wide compliance enums
+- `domain/value_objects.py` immutable compliance value object base class
+- `comparison/models.py` comparison target and metrics models
+- `comparison/result.py` comparison result model
+- `findings/evidence.py` immutable evidence model
+- `findings/models.py` finding and recommendation models
+- `findings/severity.py` severity level and severity value object
+- `policies/models.py` policy and baseline models
+- `rules/base.py` immutable rule model
+- `rules/metadata.py` rule metadata model
+- `rules/registry.py` rule registry
+
 ## `backend/app/cache`
 
 - `redis.py` cache backends, fallback behavior, and cache decorators
