@@ -10,7 +10,8 @@ transport framework, the Milestone 6 parser and normalization framework, and
 the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
 framework, and the Milestone 9 Cisco platform support framework, the
 Milestone 10 production transport adapters, the Milestone 11 Cisco inventory
-collectors, and the Milestone 12 NetBox comparison engine:
+collectors, the Milestone 12 NetBox comparison engine, and the Milestone 13
+immutable persistence layer:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -31,6 +32,8 @@ collectors, and the Milestone 12 NetBox comparison engine:
 - Cisco inventory collectors for Catalyst 2960, 2960X, 3560, Catalyst Express
   500, and Aironet 1131 platforms
 - NetBox-to-live inventory comparison engine that emits compliance findings
+- immutable PostgreSQL persistence for discovery runs, snapshots, comparison
+  results, findings, evidence, and history timelines
 
 ## Requirements
 
@@ -136,5 +139,9 @@ Milestone 12 establishes the NetBox comparison engine. It compares canonical
 NetBox inventory against live canonical snapshots, detects inventory drift, and
 emits compliance findings with evidence. It intentionally does not persist
 results, score compliance, update NetBox, or generate reports.
+
+Milestone 13 establishes immutable discovery history persistence for snapshots,
+comparison results, findings, and evidence. It intentionally does not add REST
+APIs, reporting, scheduling, compliance scoring, or UI behavior.
 
 The detailed package map lives in `docs/project-structure.md`.

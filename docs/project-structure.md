@@ -46,6 +46,22 @@
 - `result.py` comparison result and metrics models
 - `evidence.py` compliance evidence generation
 
+## `backend/app/persistence`
+
+- `__init__.py` immutable persistence exports
+- `models.py` SQLAlchemy discovery history, snapshot, comparison, finding, and evidence models
+- `repositories.py` history, snapshot, and finding repositories
+- `unit_of_work.py` persistence unit-of-work integration
+- `migrations.py` Alembic metadata imports
+
+## `backend/app/history`
+
+- `__init__.py` history query exports
+- `discovery.py` discovery run history queries
+- `snapshots.py` snapshot history queries
+- `findings.py` finding history queries
+- `timeline.py` chronological history timeline queries
+
 ## `backend/app/discovery`
 
 - `capabilities.py` collector capability definitions
