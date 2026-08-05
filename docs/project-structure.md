@@ -34,6 +34,18 @@
 - `inventory.py` inventory synchronization service
 - `utils.py` reusable service helpers
 
+## `backend/app/comparison`
+
+- `__init__.py` NetBox comparison engine exports
+- `engine.py` comparison pipeline orchestration
+- `matcher.py` canonical NetBox-to-live inventory matching
+- `comparator.py` device, interface, VLAN, platform, identity, and neighbor comparators
+- `diff.py` immutable difference model and difference type enum
+- `registry.py` difference registry and builder helpers
+- `filters.py` difference filtering support
+- `result.py` comparison result and metrics models
+- `evidence.py` compliance evidence generation
+
 ## `backend/app/discovery`
 
 - `capabilities.py` collector capability definitions

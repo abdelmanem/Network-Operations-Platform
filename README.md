@@ -9,8 +9,8 @@ Milestone 4 discovery and snapshot framework, and the Milestone 5 reusable
 transport framework, the Milestone 6 parser and normalization framework, and
 the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
 framework, and the Milestone 9 Cisco platform support framework, the
-Milestone 10 production transport adapters, and the Milestone 11 Cisco
-inventory collectors:
+Milestone 10 production transport adapters, the Milestone 11 Cisco inventory
+collectors, and the Milestone 12 NetBox comparison engine:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -30,6 +30,7 @@ inventory collectors:
 - Cisco platform registry, capability matrix, detection helpers, and metadata catalogs
 - Cisco inventory collectors for Catalyst 2960, 2960X, 3560, Catalyst Express
   500, and Aironet 1131 platforms
+- NetBox-to-live inventory comparison engine that emits compliance findings
 
 ## Requirements
 
@@ -130,5 +131,10 @@ Milestone 11 establishes Cisco inventory collectors that use the existing
 transport, parser, normalization, runtime, and platform metadata frameworks.
 It intentionally collects inventory only and does not compare against NetBox,
 evaluate compliance, back up configurations, or generate reports.
+
+Milestone 12 establishes the NetBox comparison engine. It compares canonical
+NetBox inventory against live canonical snapshots, detects inventory drift, and
+emits compliance findings with evidence. It intentionally does not persist
+results, score compliance, update NetBox, or generate reports.
 
 The detailed package map lives in `docs/project-structure.md`.

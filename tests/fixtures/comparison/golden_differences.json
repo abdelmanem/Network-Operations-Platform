@@ -1,0 +1,10 @@
+[
+  "modified:device:switch-01:serial",
+  "modified:device:switch-01:primary_ip",
+  "missing:interface:switch-01:Gi1/0/2:",
+  "unexpected:interface:switch-01:Gi1/0/3:",
+  "modified:vlan:10:name",
+  "unexpected:vlan:20:",
+  "unsupported:neighbor:switch-01:Gi1/0/1:core-switch:",
+  "modified:platform:switch-01:platform"
+]
