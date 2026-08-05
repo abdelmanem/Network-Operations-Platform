@@ -62,6 +62,19 @@
 - `findings.py` finding history queries
 - `timeline.py` chronological history timeline queries
 
+## `backend/app/evaluation`
+
+- `__init__.py` compliance evaluation engine exports
+- `engine.py` evaluation orchestration and decision building
+- `executor.py` executable rule type evaluation
+- `policy.py` site, role, and platform policy scoping
+- `registry.py` executable evaluation rule registry
+- `context.py` evaluation context, exception, status, and decision models
+- `scoring.py` risk and compliance score calculators
+- `exceptions.py` evaluation exception hierarchy
+- `remediation.py` remediation recommendation builder
+- `metrics.py` evaluation metrics exports
+
 ## `backend/app/discovery`
 
 - `capabilities.py` collector capability definitions

@@ -10,8 +10,8 @@ transport framework, the Milestone 6 parser and normalization framework, and
 the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
 framework, and the Milestone 9 Cisco platform support framework, the
 Milestone 10 production transport adapters, the Milestone 11 Cisco inventory
-collectors, the Milestone 12 NetBox comparison engine, and the Milestone 13
-immutable persistence layer:
+collectors, the Milestone 12 NetBox comparison engine, the Milestone 13
+immutable persistence layer, and the Milestone 14 compliance evaluation engine:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -34,6 +34,8 @@ immutable persistence layer:
 - NetBox-to-live inventory comparison engine that emits compliance findings
 - immutable PostgreSQL persistence for discovery runs, snapshots, comparison
   results, findings, evidence, and history timelines
+- compliance evaluation engine for rule execution, policy scoping, exceptions,
+  risk scoring, severity assignment, and remediation guidance
 
 ## Requirements
 
@@ -143,5 +145,12 @@ results, score compliance, update NetBox, or generate reports.
 Milestone 13 establishes immutable discovery history persistence for snapshots,
 comparison results, findings, and evidence. It intentionally does not add REST
 APIs, reporting, scheduling, compliance scoring, or UI behavior.
+
+Milestone 14 establishes the compliance evaluation engine. It evaluates
+comparison differences against scoped policies and executable rules, applies
+temporary exceptions and approved waivers, calculates risk and compliance
+scores, assigns severity, and generates remediation recommendations. It
+intentionally does not add REST APIs, UI, reporting, scheduling, or
+notifications.
 
 The detailed package map lives in `docs/project-structure.md`.

@@ -1,0 +1,26 @@
+{
+  "policy": {
+    "name": "Access switch inventory policy",
+    "tags": ["site:HQ", "role:access"]
+  },
+  "rules": [
+    {
+      "key": "device-serial-must-match",
+      "name": "Device serial must match",
+      "rule_type": "equals",
+      "subject_type": "device",
+      "field_name": "serial",
+      "risk_score": 80,
+      "tags": ["platform:iosxe"]
+    },
+    {
+      "key": "interface-must-exist",
+      "name": "Interface must exist",
+      "rule_type": "exists",
+      "subject_type": "interface",
+      "difference_type": "missing",
+      "risk_score": 70,
+      "tags": ["platform:iosxe"]
+    }
+  ]
+}
