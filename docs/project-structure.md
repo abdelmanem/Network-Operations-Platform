@@ -68,7 +68,9 @@
 - `circuit_breaker.py` circuit breaker state machine
 - `connection_pool.py` transport session pooling
 - `credentials.py` credential resolution framework
+- `diagnostics.py` transport diagnostic models
 - `manager.py` transport orchestration
+- `metrics.py` transport session metrics models
 - `rate_limiter.py` token bucket rate limiting
 - `registry.py` transport registry
 - `retry.py` retry policy and backoff support
@@ -78,16 +80,20 @@
 ## `backend/app/transports/ssh`
 
 - `base.py` abstract SSH transport base class
+- `netmiko.py` concrete Netmiko SSH transport
+- `paramiko.py` concrete Paramiko SSH transport
 - `session.py` abstract SSH session base class
 
 ## `backend/app/transports/snmp`
 
 - `base.py` abstract SNMP transport base class
+- `pysnmp.py` concrete pysnmp transport
 - `session.py` abstract SNMP session base class
 
 ## `backend/app/transports/http`
 
 - `base.py` abstract HTTP transport base class
+- `httpx.py` concrete HTTPX transport
 - `session.py` abstract HTTP session base class
 
 ## `backend/app/vendors`

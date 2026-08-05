@@ -8,7 +8,8 @@ framework, the Milestone 3 NetBox source-of-truth integration boundary, the
 Milestone 4 discovery and snapshot framework, and the Milestone 5 reusable
 transport framework, the Milestone 6 parser and normalization framework, and
 the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
-framework, and the Milestone 9 Cisco platform support framework:
+framework, and the Milestone 9 Cisco platform support framework, and the
+Milestone 10 production transport adapters:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -21,6 +22,7 @@ framework, and the Milestone 9 Cisco platform support framework:
 - canonical inventory domain models and inventory synchronization service
 - discovery engine, collector SDK, and immutable snapshot framework
 - reusable transport manager, registry, pooling, retries, and lifecycle support
+- concrete HTTPX, Paramiko, Netmiko, and pysnmp transport adapters
 - parser registry, parser pipeline, and normalization engine for canonical models
 - immutable compliance rules, policies, findings, evidence, and comparison results
 - collector runtime engine, scheduler, dispatcher, state machine, and metrics
@@ -116,5 +118,9 @@ Milestone 9 establishes the Cisco platform support framework, including
 immutable platform metadata, command catalogs, SNMP OID groups, HTTP endpoint
 metadata, capability matrices, and detection helpers. It intentionally does not
 establish live network connections or execute device interactions.
+
+Milestone 10 establishes the concrete production transport adapters for HTTP,
+SSH, and SNMP. It intentionally remains vendor-neutral and does not implement
+collectors, parsing, inventory logic, or compliance evaluation.
 
 The detailed package map lives in `docs/project-structure.md`.

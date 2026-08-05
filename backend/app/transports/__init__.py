@@ -16,11 +16,21 @@ from backend.app.transports.credentials import (
     TransportCredentials,
     UsernamePasswordCredentials,
 )
+from backend.app.transports.diagnostics import TransportDiagnostic
+from backend.app.transports.http import HttpxHTTPSession, HttpxTransport
 from backend.app.transports.manager import TransportManager
+from backend.app.transports.metrics import TransportMetrics
 from backend.app.transports.rate_limiter import RateLimiter
 from backend.app.transports.registry import TransportRegistry
 from backend.app.transports.retry import TransportRetryPolicy
 from backend.app.transports.session import TransportSession
+from backend.app.transports.snmp import PySnmpSession, PySnmpTransport
+from backend.app.transports.ssh import (
+    NetmikoSSHSession,
+    NetmikoSSHTransport,
+    ParamikoSSHSession,
+    ParamikoSSHTransport,
+)
 from backend.app.transports.timeout import TransportTimeout
 
 __all__ = [
@@ -33,14 +43,24 @@ __all__ = [
     "RateLimiter",
     "StaticCredentialResolver",
     "TokenCredentials",
+    "TransportDiagnostic",
     "TransportCapability",
     "TransportContext",
     "TransportCredentials",
     "TransportManager",
+    "TransportMetrics",
     "TransportRegistry",
     "TransportRetryPolicy",
     "TransportSession",
     "TransportTarget",
     "TransportTimeout",
+    "HttpxHTTPSession",
+    "HttpxTransport",
+    "NetmikoSSHSession",
+    "NetmikoSSHTransport",
+    "ParamikoSSHSession",
+    "ParamikoSSHTransport",
+    "PySnmpSession",
+    "PySnmpTransport",
     "UsernamePasswordCredentials",
 ]
