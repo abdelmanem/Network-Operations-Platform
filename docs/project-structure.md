@@ -75,6 +75,20 @@
 - `remediation.py` remediation recommendation builder
 - `metrics.py` evaluation metrics exports
 
+## `backend/app/orchestration`
+
+- `__init__.py` orchestration exports
+- `engine.py` top-level orchestration job runner
+- `workflow.py` end-to-end workflow executor
+- `coordinator.py` collector runtime coordination and live snapshot aggregation
+- `context.py` run context, cancellation token, and progress callback types
+- `jobs.py` orchestration job model
+- `state.py` run state machine
+- `progress.py` immutable progress update model
+- `events.py` orchestration event helpers
+- `metrics.py` execution metrics tracking
+- `results.py` immutable run result aggregation
+
 ## `backend/app/discovery`
 
 - `capabilities.py` collector capability definitions

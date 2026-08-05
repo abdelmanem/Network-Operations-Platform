@@ -11,7 +11,8 @@ the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
 framework, and the Milestone 9 Cisco platform support framework, the
 Milestone 10 production transport adapters, the Milestone 11 Cisco inventory
 collectors, the Milestone 12 NetBox comparison engine, the Milestone 13
-immutable persistence layer, and the Milestone 14 compliance evaluation engine:
+immutable persistence layer, the Milestone 14 compliance evaluation engine, and
+the Milestone 15 end-to-end orchestration engine:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -36,6 +37,8 @@ immutable persistence layer, and the Milestone 14 compliance evaluation engine:
   results, findings, evidence, and history timelines
 - compliance evaluation engine for rule execution, policy scoping, exceptions,
   risk scoring, severity assignment, and remediation guidance
+- end-to-end orchestration workflow from NetBox inventory retrieval through
+  collector runtime, comparison, evaluation, persistence, events, and run result
 
 ## Requirements
 
@@ -152,5 +155,11 @@ temporary exceptions and approved waivers, calculates risk and compliance
 scores, assigns severity, and generates remediation recommendations. It
 intentionally does not add REST APIs, UI, reporting, scheduling, or
 notifications.
+
+Milestone 15 establishes the end-to-end orchestration engine. It composes
+NetBox inventory retrieval, collector runtime execution, snapshot normalization,
+comparison, compliance evaluation, immutable persistence, progress callbacks,
+events, retries, cancellation, and run result aggregation. It intentionally does
+not add REST APIs, UI, reporting, scheduling, or notifications.
 
 The detailed package map lives in `docs/project-structure.md`.

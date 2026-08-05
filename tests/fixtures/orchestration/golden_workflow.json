@@ -1,0 +1,12 @@
+{
+  "status": "succeeded",
+  "progress_steps": [
+    "netbox_inventory",
+    "collector_runtime",
+    "comparison",
+    "evaluation",
+    "persistence",
+    "completed"
+  ],
+  "expected_difference_count": 1
+}
