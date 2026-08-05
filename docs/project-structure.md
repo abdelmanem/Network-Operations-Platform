@@ -90,6 +90,21 @@
 - `base.py` abstract HTTP transport base class
 - `session.py` abstract HTTP session base class
 
+## `backend/app/vendors`
+
+- `cisco/__init__.py` Cisco platform support framework exports
+- `cisco/capabilities.py` Cisco capability model and capability matrix
+- `cisco/detection.py` Cisco platform detection signals
+- `cisco/metadata.py` immutable Cisco platform metadata and definitions
+- `cisco/platforms.py` Cisco platform registry
+- `cisco/catalog/commands.py` Cisco command catalog definitions
+- `cisco/catalog/snmp.py` Cisco SNMP OID catalog definitions
+- `cisco/catalog/http.py` Cisco HTTP endpoint catalog definitions
+- `cisco/models/ios.py` Cisco IOS platform definitions
+- `cisco/models/iosxe.py` Cisco IOS XE platform definitions
+- `cisco/models/aironet.py` Cisco Aironet platform definitions
+- `cisco/models/ce500.py` Cisco Catalyst Express 500 platform definitions
+
 ## `backend/app/parsers`
 
 - `base.py` abstract parser interface

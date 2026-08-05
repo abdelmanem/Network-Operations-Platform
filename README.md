@@ -8,7 +8,7 @@ framework, the Milestone 3 NetBox source-of-truth integration boundary, the
 Milestone 4 discovery and snapshot framework, and the Milestone 5 reusable
 transport framework, the Milestone 6 parser and normalization framework, and
 the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
-framework:
+framework, and the Milestone 9 Cisco platform support framework:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -24,6 +24,7 @@ framework:
 - parser registry, parser pipeline, and normalization engine for canonical models
 - immutable compliance rules, policies, findings, evidence, and comparison results
 - collector runtime engine, scheduler, dispatcher, state machine, and metrics
+- Cisco platform registry, capability matrix, detection helpers, and metadata catalogs
 
 ## Requirements
 
@@ -110,5 +111,10 @@ Milestone 8 establishes the collector runtime framework, including scheduling,
 dispatching, execution state tracking, cancellation, retry, timeout handling,
 and runtime metrics. It intentionally does not implement vendor-specific
 commands, transport logic, parsing rules, or compliance evaluation.
+
+Milestone 9 establishes the Cisco platform support framework, including
+immutable platform metadata, command catalogs, SNMP OID groups, HTTP endpoint
+metadata, capability matrices, and detection helpers. It intentionally does not
+establish live network connections or execute device interactions.
 
 The detailed package map lives in `docs/project-structure.md`.
