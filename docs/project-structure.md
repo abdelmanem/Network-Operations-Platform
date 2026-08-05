@@ -123,6 +123,25 @@
 - `rules/metadata.py` rule metadata model
 - `rules/registry.py` rule registry
 
+## `backend/app/collectors/execution`
+
+- `exceptions.py` collector execution exception hierarchy
+- `progress.py` execution progress model
+- `result.py` collector execution result model
+- `status.py` execution status enum
+
+## `backend/app/collectors/runtime`
+
+- `context.py` collector runtime context
+- `dispatcher.py` runtime job dispatcher
+- `engine.py` runtime orchestration engine
+- `executor.py` collector execution executor
+- `job.py` runtime job and queue primitives
+- `lifecycle.py` runtime lifecycle hooks
+- `metrics.py` runtime metrics tracking
+- `scheduler.py` runtime scheduler
+- `state.py` execution state machine
+
 ## `backend/app/cache`
 
 - `redis.py` cache backends, fallback behavior, and cache decorators
