@@ -26,6 +26,7 @@ class InterfaceSnapshot:
     description: str | None = None
     mac_address: str | None = None
     speed_mbps: int | None = None
+    poe_status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +92,14 @@ class DeviceSnapshot:
     manufacturer: str | None = None
     model: str | None = None
     serial_number: str | None = None
+    product_id: str | None = None
+    management_ip: str | None = None
+    base_mac: str | None = None
+    software_version: str | None = None
+    uptime: str | None = None
+    hardware_revision: str | None = None
     platform: str | None = None
+    stack_members: tuple[str, ...] = field(default_factory=tuple)
     interfaces: tuple[InterfaceSnapshot, ...] = field(default_factory=tuple)
     vlans: tuple[VLANSnapshot, ...] = field(default_factory=tuple)
     mac_table: tuple[MACTableSnapshot, ...] = field(default_factory=tuple)

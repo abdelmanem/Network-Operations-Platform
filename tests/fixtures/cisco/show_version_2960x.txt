@@ -1,0 +1,6 @@
+Cisco IOS XE Software, Version 15.2(7)E7
+Switch uptime is 2 years, 3 weeks, 4 days, 5 hours, 6 minutes
+System serial number            : FOC1234X1AB
+Model number                    : WS-C2960X-48FPS-L
+Base Ethernet MAC Address       : 00:11:22:33:44:55
+Hardware                        : WS-C2960X-48FPS-L

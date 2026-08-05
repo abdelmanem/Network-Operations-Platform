@@ -53,6 +53,16 @@
 - `registry.py` collector registry
 - `result.py` collector result model
 
+## `backend/app/collectors/cisco`
+
+- `__init__.py` Cisco inventory collector exports
+- `base.py` shared Cisco inventory collection workflow and transport selection
+- `ios.py` Catalyst IOS/IOS XE inventory collector
+- `ce500.py` Catalyst Express 500 inventory collector
+- `aironet.py` Aironet inventory collector
+- `factory.py` Cisco collector factory and registry builder
+- `inventory.py` Cisco inventory parser for SSH, SNMP, and HTTP payloads
+
 ## `backend/app/snapshot`
 
 - `entities.py` immutable snapshot entities

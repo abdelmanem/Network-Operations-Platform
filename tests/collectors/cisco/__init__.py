@@ -1,0 +1,1 @@
+"""Cisco collector tests."""

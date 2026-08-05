@@ -42,7 +42,14 @@ class SnapshotMapper:
             manufacturer=snapshot.manufacturer,
             model=snapshot.model,
             serial_number=snapshot.serial_number,
+            product_id=snapshot.product_id,
+            management_ip=snapshot.management_ip,
+            base_mac=snapshot.base_mac,
+            software_version=snapshot.software_version,
+            uptime=snapshot.uptime,
+            hardware_revision=snapshot.hardware_revision,
             platform=snapshot.platform,
+            stack_members=snapshot.stack_members,
             interfaces=tuple(
                 entity_models.InterfaceSnapshot(
                     device_id=interface.device_id,
@@ -54,6 +61,7 @@ class SnapshotMapper:
                     description=interface.description,
                     mac_address=interface.mac_address,
                     speed_mbps=interface.speed_mbps,
+                    poe_status=interface.poe_status,
                 )
                 for interface in snapshot.interfaces
             ),

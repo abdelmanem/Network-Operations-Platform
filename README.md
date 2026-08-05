@@ -8,8 +8,9 @@ framework, the Milestone 3 NetBox source-of-truth integration boundary, the
 Milestone 4 discovery and snapshot framework, and the Milestone 5 reusable
 transport framework, the Milestone 6 parser and normalization framework, and
 the Milestone 7 compliance domain model, and the Milestone 8 collector runtime
-framework, and the Milestone 9 Cisco platform support framework, and the
-Milestone 10 production transport adapters:
+framework, and the Milestone 9 Cisco platform support framework, the
+Milestone 10 production transport adapters, and the Milestone 11 Cisco
+inventory collectors:
 
 - FastAPI application scaffold
 - typed Pydantic Settings configuration
@@ -27,6 +28,8 @@ Milestone 10 production transport adapters:
 - immutable compliance rules, policies, findings, evidence, and comparison results
 - collector runtime engine, scheduler, dispatcher, state machine, and metrics
 - Cisco platform registry, capability matrix, detection helpers, and metadata catalogs
+- Cisco inventory collectors for Catalyst 2960, 2960X, 3560, Catalyst Express
+  500, and Aironet 1131 platforms
 
 ## Requirements
 
@@ -122,5 +125,10 @@ establish live network connections or execute device interactions.
 Milestone 10 establishes the concrete production transport adapters for HTTP,
 SSH, and SNMP. It intentionally remains vendor-neutral and does not implement
 collectors, parsing, inventory logic, or compliance evaluation.
+
+Milestone 11 establishes Cisco inventory collectors that use the existing
+transport, parser, normalization, runtime, and platform metadata frameworks.
+It intentionally collects inventory only and does not compare against NetBox,
+evaluate compliance, back up configurations, or generate reports.
 
 The detailed package map lives in `docs/project-structure.md`.

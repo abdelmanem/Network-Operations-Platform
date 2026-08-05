@@ -1,0 +1,3 @@
+Available:370.0(w)  Used:120.5(w)  Remaining:249.5(w)
+Interface Admin  Oper       Power   Device
+Gi1/0/2  auto   on         15.4    IP Phone
