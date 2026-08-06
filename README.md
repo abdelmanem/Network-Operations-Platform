@@ -39,6 +39,10 @@ the Milestone 15 end-to-end orchestration engine:
   risk scoring, severity assignment, and remediation guidance
 - end-to-end orchestration workflow from NetBox inventory retrieval through
   collector runtime, comparison, evaluation, persistence, events, and run result
+- production-ready FastAPI REST API with typed request/response models,
+  versioned routes, health and metrics endpoints, background job submission,
+  job lifecycle operations, discovery history, findings, device history,
+  comparison, and compliance retrieval
 
 ## Requirements
 
@@ -62,7 +66,13 @@ pip install -e .[dev]
 uvicorn backend.app.main:app --reload
 ```
 
-5. Check health:
+5. Open API documentation:
+
+```bash
+http://127.0.0.1:8000/docs
+```
+
+6. Check health:
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -163,3 +173,14 @@ events, retries, cancellation, and run result aggregation. It intentionally does
 not add REST APIs, UI, reporting, scheduling, or notifications.
 
 The detailed package map lives in `docs/project-structure.md`.
+
+## REST API
+
+The platform now exposes a versioned REST API under `/api/v1` for health,
+version, metrics, discovery jobs, job status and cancellation, discovery history,
+findings, device history, comparison results, and compliance results.
+
+- OpenAPI docs: `/docs`
+- ReDoc: `/redoc`
+- API guide: `docs/rest-api.md`
+- OpenAPI coverage guide: `docs/openapi.md`

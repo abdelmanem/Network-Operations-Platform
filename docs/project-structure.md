@@ -264,3 +264,20 @@
 - `application.py` request-scoped application container access
 - `database.py` database session dependency
 - `settings.py` application settings dependency
+
+## `backend/app/api`
+
+- `router.py` top-level API router composition
+- `v1/` versioned FastAPI routes for health, metrics, jobs, history, findings, devices, comparison, and compliance
+- `v1/dependencies.py` shared dependency injection helpers for application state and database access
+
+## `backend/app/schemas`
+
+- `common.py` shared pagination and error response models
+- `jobs.py` job submission and status response models
+- `discovery.py` discovery history response models
+- `findings.py` finding and evidence response models
+- `history.py` device history response models
+- `devices.py` device history payload models
+- `comparison.py` comparison result response models
+- `compliance.py` compliance result response models
