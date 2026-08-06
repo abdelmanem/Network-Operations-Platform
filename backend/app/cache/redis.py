@@ -225,9 +225,7 @@ def build_cache_backend(
     )
 
 
-def cache_result[
-    **P, TValue
-](
+def cache_result[**P, TValue](
     cache: CacheBackend,
     *,
     key_builder: Callable[P, str],

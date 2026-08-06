@@ -184,9 +184,7 @@ class WorkflowEngine:
             metrics=self.metrics.snapshot(),
         )
 
-    async def _step_async[
-        T
-    ](
+    async def _step_async[T](
         self,
         job: OrchestrationJob,
         step: str,
@@ -200,9 +198,7 @@ class WorkflowEngine:
         await self._progress(job, step, completed_steps, f"Completed {step}.")
         return value
 
-    async def _step_sync[
-        T
-    ](
+    async def _step_sync[T](
         self,
         job: OrchestrationJob,
         step: str,
