@@ -102,7 +102,7 @@ class RedisCache:
             raise CacheError("Redis support is not available.") from _redis_import_error
 
         return cls(
-            client=redis_asyncio.from_url(url, decode_responses=False),
+            client=cast(Any, redis_asyncio).from_url(url, decode_responses=False),
             key_prefix=key_prefix,
         )
 
@@ -225,9 +225,7 @@ def build_cache_backend(
     )
 
 
-def cache_result[
-    **P, TValue
-](
+def cache_result[**P, TValue](
     cache: CacheBackend,
     *,
     key_builder: Callable[P, str],

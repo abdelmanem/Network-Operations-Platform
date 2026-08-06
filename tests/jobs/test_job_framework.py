@@ -1,11 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, UTC
-from uuid import uuid4
 
 import pytest
-
+from backend.app.collectors.runtime.context import CollectorRuntimeContext
+from backend.app.comparison.engine import ComparisonEngine
+from backend.app.compliance.domain.enums import RuleStatus
+from backend.app.compliance.policies.models import Policy
+from backend.app.compliance.rules.base import Rule
+from backend.app.compliance.rules.metadata import RuleMetadata
+from backend.app.discovery.context import DiscoveryTarget
+from backend.app.evaluation.engine import EvaluationEngine
+from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapshot
+from backend.app.inventory.entities import Device, DeviceType, Manufacturer
+from backend.app.jobs import (
+    CancellationToken as JobCancellationToken,
+)
+from backend.app.jobs import (
+    InMemoryJobRepository,
+    JobManager,
+    JobNotificationEventNames,
+    JobRequest,
+    JobStatus,
+)
+from backend.app.models.base import BaseModel
 from backend.app.orchestration import (
     CancellationToken,
     OrchestrationContext,
@@ -13,44 +31,29 @@ from backend.app.orchestration import (
     OrchestrationStatus,
     WorkflowEngine,
 )
-from backend.app.orchestration.events import OrchestrationEventNames
-from backend.app.collectors.runtime.context import CollectorRuntimeContext
-from backend.app.discovery.context import DiscoveryTarget
-from backend.app.compliance.policies.models import Policy
-from backend.app.compliance.rules.base import Rule
-from backend.app.compliance.rules.metadata import RuleMetadata
-from backend.app.compliance.domain.enums import RuleStatus
-from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapshot
+from backend.app.orchestration.coordinator import DiscoveryCoordinator
+from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
 from backend.app.snapshot.entities import (
     DeviceSnapshot,
+)
+from backend.app.snapshot.entities import (
     InventorySnapshot as LiveInventorySnapshot,
 )
-from backend.app.inventory.entities import Device, DeviceType, Manufacturer
-from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
-from backend.app.models.base import BaseModel
-from backend.app.jobs import (
-    CancellationToken as JobCancellationToken,
-    InMemoryJobRepository,
-    JobManager,
-    JobProgress,
-    JobRequest,
-    JobStatus,
-    JobNotificationEventNames,
-)
-from backend.app.comparison.engine import ComparisonEngine
-from backend.app.evaluation.engine import EvaluationEngine
-from backend.app.orchestration.coordinator import DiscoveryCoordinator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 
 class FakeInventoryService:
-    def __init__(self, snapshot: NetBoxInventorySnapshot, fail_once: bool = False) -> None:
+    def __init__(
+        self, snapshot: NetBoxInventorySnapshot, fail_once: bool = False
+    ) -> None:
         self.snapshot = snapshot
         self.fail_once = fail_once
         self.calls = 0
 
-    async def synchronize(self, *, force_refresh: bool = False) -> NetBoxInventorySnapshot:
+    async def synchronize(
+        self, *, force_refresh: bool = False
+    ) -> NetBoxInventorySnapshot:
         self.calls += 1
         if self.fail_once and self.calls == 1:
             raise RuntimeError("temporary netbox failure")
@@ -67,7 +70,9 @@ class FakeCollectorRuntime:
     async def stop(self) -> None:
         return None
 
-    async def submit(self, context: CollectorRuntimeContext, *, priority: int = 0) -> object:
+    async def submit(
+        self, context: CollectorRuntimeContext, *, priority: int = 0
+    ) -> object:
         return object()
 
     async def run_job(self, job: object) -> object:
@@ -76,7 +81,9 @@ class FakeCollectorRuntime:
 
         return FakeResult()
 
-    async def collect(self, contexts: tuple[CollectorRuntimeContext, ...]) -> tuple[LiveInventorySnapshot, tuple[object, ...]]:
+    async def collect(
+        self, contexts: tuple[CollectorRuntimeContext, ...]
+    ) -> tuple[LiveInventorySnapshot, tuple[object, ...]]:
         return self.snapshot, ()
 
 
@@ -143,10 +150,14 @@ def _policy() -> Policy:
     return Policy.create("Inventory Policy", rules=(rule,))
 
 
-def _orchestration_engine(session: Session, *, inventory_service: FakeInventoryService | None = None) -> OrchestrationEngine:
+def _orchestration_engine(
+    session: Session, *, inventory_service: FakeInventoryService | None = None
+) -> OrchestrationEngine:
     workflow = WorkflowEngine(
         inventory_service=inventory_service or FakeInventoryService(_netbox_snapshot()),
-        discovery_coordinator=DiscoveryCoordinator(FakeCollectorRuntime(_live_snapshot())),
+        discovery_coordinator=DiscoveryCoordinator(
+            FakeCollectorRuntime(_live_snapshot())
+        ),
         comparison_engine=ComparisonEngine(),
         evaluation_engine=EvaluationEngine(),
         unit_of_work_factory=lambda: PersistenceUnitOfWork(session),
@@ -154,7 +165,9 @@ def _orchestration_engine(session: Session, *, inventory_service: FakeInventoryS
     return OrchestrationEngine(workflow)
 
 
-def _context(*, max_attempts: int = 1, cancellation_token: JobCancellationToken | None = None) -> OrchestrationContext:
+def _context(
+    *, max_attempts: int = 1, cancellation_token: JobCancellationToken | None = None
+) -> OrchestrationContext:
     return OrchestrationContext(
         collector_contexts=(
             CollectorRuntimeContext(
@@ -227,7 +240,10 @@ async def test_job_cancellation(session: Session) -> None:
 async def test_job_retry_and_timeout_support(session: Session) -> None:
     repository = InMemoryJobRepository()
     manager = JobManager(
-        engine=_orchestration_engine(session, inventory_service=FakeInventoryService(_netbox_snapshot(), fail_once=True)),
+        engine=_orchestration_engine(
+            session,
+            inventory_service=FakeInventoryService(_netbox_snapshot(), fail_once=True),
+        ),
         repository=repository,
         worker_count=1,
     )
@@ -292,4 +308,6 @@ async def test_job_concurrency_with_multiple_workers() -> None:
     await manager.shutdown()
 
     assert manager.metrics.started_jobs == 3
-    assert all(job.state.status == JobStatus.COMPLETED for job in await repository.list_jobs())
+    assert all(
+        job.state.status == JobStatus.COMPLETED for job in await repository.list_jobs()
+    )

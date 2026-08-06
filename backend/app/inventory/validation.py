@@ -49,9 +49,12 @@ def validate_collection_payload(
     return cast(Mapping[str, object], payload)
 
 
-def validate_model[
-    TModel: BaseModel
-](payload: object, model_type: type[TModel], *, context: str,) -> TModel:
+def validate_model[TModel: BaseModel](
+    payload: object,
+    model_type: type[TModel],
+    *,
+    context: str,
+) -> TModel:
     """Validate a single payload against a Pydantic model."""
 
     try:

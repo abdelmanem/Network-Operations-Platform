@@ -7,11 +7,12 @@ from dataclasses import dataclass, field
 
 from backend.app.events.interfaces import EventPublisher
 from backend.app.jobs.metrics import JobMetrics
+from backend.app.jobs.models import Job
 from backend.app.jobs.notifications import (
     JobNotificationEventNames,
     publish_job_event,
 )
-from backend.app.jobs.models import Job
+from backend.app.jobs.progress import JobProgress
 from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.orchestration.results import OrchestrationResult
 from backend.app.orchestration.state import OrchestrationStatus
@@ -56,12 +57,16 @@ class JobDispatcher:
             try:
                 if job.request.timeout_seconds is not None:
                     result = await asyncio.wait_for(
-                        self.engine.run(job.request.context, priority=job.request.priority),
+                        self.engine.run(
+                            job.request.context, priority=job.request.priority
+                        ),
                         timeout=job.request.timeout_seconds,
                     )
                 else:
-                    result = await self.engine.run(job.request.context, priority=job.request.priority)
-            except asyncio.TimeoutError as exc:
+                    result = await self.engine.run(
+                        job.request.context, priority=job.request.priority
+                    )
+            except TimeoutError as exc:
                 job.state.mark_timed_out(str(exc))
                 self.metrics.record_timed_out()
                 await publish_job_event(
@@ -72,7 +77,9 @@ class JobDispatcher:
                 )
                 raise
             except asyncio.CancelledError:
-                job.state.mark_cancelled(job.cancellation_token.reason or "Job cancelled.")
+                job.state.mark_cancelled(
+                    job.cancellation_token.reason or "Job cancelled."
+                )
                 self.metrics.record_cancelled()
                 await publish_job_event(
                     self.event_publisher,
@@ -120,7 +127,7 @@ class JobDispatcher:
                     )
                 return result
 
-    async def report_progress(self, job: Job, progress: "JobProgress") -> None:
+    async def report_progress(self, job: Job, progress: JobProgress) -> None:
         """Publish progress for a running job."""
 
         if job.progress_callback is not None:

@@ -153,7 +153,7 @@ class EvaluationEngine:
 
     @staticmethod
     def _recommendations(
-        rule_results: tuple[RuleEvaluationResult, ...]
+        rule_results: tuple[RuleEvaluationResult, ...],
     ) -> tuple[Recommendation, ...]:
         return tuple(
             result.recommendation

@@ -13,10 +13,10 @@ class JobLifecycleManager:
     stop_event: asyncio.Event = field(default_factory=asyncio.Event)
     worker_tasks: list[asyncio.Task[None]] = field(default_factory=list)
 
-    def create_worker(self, coro: asyncio.Future[None] | asyncio.Task[None]) -> asyncio.Task[None]:
+    def create_worker(self, coro: object) -> asyncio.Task[None]:
         """Create and track a worker task."""
 
-        task = asyncio.create_task(coro)
+        task: asyncio.Task[None] = asyncio.create_task(coro)  # type: ignore[arg-type]
         self.worker_tasks.append(task)
         return task
 

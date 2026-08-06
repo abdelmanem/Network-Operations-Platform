@@ -4,24 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 if TYPE_CHECKING:
     from backend.app.orchestration.progress import OrchestrationProgress
 
 from backend.app.events.interfaces import EventPublisher
+from backend.app.jobs.dispatcher import JobDispatcher
 from backend.app.jobs.lifecycle import JobLifecycleManager
 from backend.app.jobs.metrics import JobMetrics
 from backend.app.jobs.models import Job, JobRequest, JobSubmissionResult
-from backend.app.jobs.progress import JobProgress
-from backend.app.jobs.queue import JobQueue
-from backend.app.jobs.repository import JobRepository
-from backend.app.jobs.worker import JobWorker
-from backend.app.jobs.dispatcher import JobDispatcher
-from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.jobs.notifications import (
     JobNotificationEventNames,
     publish_job_event,
 )
+from backend.app.jobs.progress import JobProgress
+from backend.app.jobs.queue import JobQueue
+from backend.app.jobs.repository import JobRepository
+from backend.app.jobs.worker import JobWorker
+from backend.app.orchestration.engine import OrchestrationEngine
+from backend.app.orchestration.progress import OrchestrationProgress
 
 
 @dataclass(slots=True)
@@ -60,26 +62,24 @@ class JobManager:
         original_callback = request.context.progress_callback
         event_publisher = self.event_publisher
 
-        async def wrapped_progress(orchestration_progress: "OrchestrationProgress") -> None:
+        async def wrapped_progress(
+            progress: OrchestrationProgress,
+        ) -> None:
             if original_callback is not None:
-                result = original_callback(orchestration_progress)
+                result = original_callback(progress)
                 if result is not None:
                     await result
 
             if event_publisher is not None:
-                job_progress = JobProgress.from_orchestration(
-                    job_id=job.id,
-                    progress=orchestration_progress,
-                )
                 await publish_job_event(
                     event_publisher,
                     JobNotificationEventNames().JOB_PROGRESS,
                     job,
-                    step=job_progress.step,
-                    completed_steps=job_progress.completed_steps,
-                    total_steps=job_progress.total_steps,
-                    percent=job_progress.percent,
-                    message=job_progress.message,
+                    step=progress.step,
+                    completed_steps=progress.completed_steps,
+                    total_steps=progress.total_steps,
+                    percent=progress.percent,
+                    message=progress.message,
                 )
 
         wrapped_request = replace(
@@ -91,9 +91,22 @@ class JobManager:
             ),
         )
 
+        async def emit_job_progress(progress: JobProgress) -> None:
+            if event_publisher is not None:
+                await publish_job_event(
+                    event_publisher,
+                    JobNotificationEventNames().JOB_PROGRESS,
+                    job,
+                    step=progress.step,
+                    completed_steps=progress.completed_steps,
+                    total_steps=progress.total_steps,
+                    percent=progress.percent,
+                    message=progress.message,
+                )
+
         job = Job(
             request=wrapped_request,
-            progress_callback=wrapped_progress,
+            progress_callback=emit_job_progress,
             event_publisher=event_publisher,
             cancellation_token=wrapped_request.context.cancellation_token,
         )
@@ -123,9 +136,7 @@ class JobManager:
     async def cancel_job(self, job_id: str, reason: str = "Job cancelled.") -> None:
         """Request cancellation for a specific job."""
 
-        from uuid import UUID as UUIDType
-
-        job_uuid = UUIDType(job_id)
+        job_uuid = UUID(job_id)
         job = await self.repository.get(job_uuid)
         if job is None:
             return

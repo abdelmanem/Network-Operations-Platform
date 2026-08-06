@@ -142,7 +142,7 @@ class RuleExecutor:
 
     @staticmethod
     def _compare(
-        operation: Callable[[float, float], bool]
+        operation: Callable[[float, float], bool],
     ) -> Callable[[object | None, object | None], bool]:
         def compare(expected: object | None, observed: object | None) -> bool:
             if expected is None or observed is None:

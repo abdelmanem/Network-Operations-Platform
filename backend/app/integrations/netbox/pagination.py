@@ -62,9 +62,7 @@ class NetBoxPaginator:
             current_endpoint = next_url
             request_params = None
 
-    async def iter_results[
-        TNetBoxModel: NetBoxModel
-    ](
+    async def iter_results[TNetBoxModel: NetBoxModel](
         self,
         endpoint: NetBoxEndpoint | str,
         model_type: type[TNetBoxModel],

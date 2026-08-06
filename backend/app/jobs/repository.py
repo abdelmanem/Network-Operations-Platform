@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from uuid import UUID
 
 from backend.app.jobs.models import Job, JobHistoryRecord

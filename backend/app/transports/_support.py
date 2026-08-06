@@ -127,9 +127,10 @@ def metadata_int(
     raise TransportConfigurationError(f"Metadata value '{key}' must be an integer.")
 
 
-async def retry_async[
-    T
-](policy: TransportRetryPolicy | None, operation: Callable[[], Awaitable[T]],) -> T:
+async def retry_async[T](
+    policy: TransportRetryPolicy | None,
+    operation: Callable[[], Awaitable[T]],
+) -> T:
     """Execute an async operation with retry policy support."""
 
     if policy is None:

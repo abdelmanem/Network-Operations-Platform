@@ -21,13 +21,13 @@ class JobProgress:
     completed_steps: int
     total_steps: int
     percent: float
-    message: str
+    message: str | None
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def from_orchestration(
         cls, job_id: UUID, progress: OrchestrationProgress
-    ) -> "JobProgress":
+    ) -> JobProgress:
         """Create job progress from orchestration progress."""
 
         return cls(

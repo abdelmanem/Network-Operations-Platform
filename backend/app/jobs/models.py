@@ -7,10 +7,15 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from backend.app.events.interfaces import EventPublisher
-from backend.app.jobs.cancellation import CancellationToken
+from backend.app.jobs.cancellation import CancellationToken as JobCancellationToken
 from backend.app.jobs.progress import JobProgressCallback
 from backend.app.jobs.state import JobState
-from backend.app.orchestration.context import OrchestrationContext
+from backend.app.orchestration.context import (
+    CancellationToken as OrchestrationCancellationToken,
+)
+from backend.app.orchestration.context import (
+    OrchestrationContext,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +41,7 @@ class JobStateSnapshot:
     updated_at: datetime
 
     @classmethod
-    def from_state(cls, state: JobState) -> "JobStateSnapshot":
+    def from_state(cls, state: JobState) -> JobStateSnapshot:
         return cls(
             status=state.status.value,
             attempts=state.attempts,
@@ -64,7 +69,7 @@ class JobHistoryRecord:
 class JobSubmissionResult:
     """Result returned when a job is submitted."""
 
-    job: "Job"
+    job: Job
     queued: bool
 
 
@@ -78,7 +83,9 @@ class Job:
     history: list[JobHistoryRecord] = field(default_factory=list)
     progress_callback: JobProgressCallback | None = None
     event_publisher: EventPublisher | None = None
-    cancellation_token: CancellationToken = field(default_factory=CancellationToken)
+    cancellation_token: JobCancellationToken | OrchestrationCancellationToken = field(
+        default_factory=JobCancellationToken
+    )
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def cancel(self, reason: str = "Job cancelled.") -> None:
