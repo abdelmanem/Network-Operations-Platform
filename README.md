@@ -49,6 +49,9 @@ the Milestone 15 end-to-end orchestration engine:
   HTML/CSV/JSON/Excel/PDF export support
 - historical analytics engine over immutable persisted history for trend,
   anomaly, and recommendation analysis without live collection or UI
+- reusable policy management framework for immutable policies, versioning,
+  lifecycle transitions, inheritance, assignment scoping, validation,
+  compilation, and repository access without UI, REST APIs, or persistence
 
 ## Requirements
 
@@ -187,6 +190,12 @@ Milestone 19 establishes the historical analytics engine. It analyzes
 immutable persisted history to classify compliance, risk, and discovery
 trends, detect anomalies, and emit recommendations without introducing live
 collection, REST endpoints, or UI.
+
+Milestone 20 establishes the policy management framework. It introduces
+immutable policy definitions, lifecycle states, version history, deterministic
+inheritance, assignment scopes, validation, compilation to immutable packages,
+and read-only repository behavior without introducing UI, REST endpoints,
+workflow scheduling, or persistence changes.
 
 The detailed package map lives in `docs/project-structure.md`.
 

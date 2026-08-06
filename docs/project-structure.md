@@ -203,6 +203,21 @@
 - `rules.py` normalization rule protocol
 - `validator.py` normalization validation helpers
 
+## `backend/app/policies`
+
+- `__init__.py` policy framework exports
+- `engine.py` policy validation and compilation orchestration
+- `service.py` convenience service facade for policy operations
+- `repository.py` immutable in-memory repository implementation
+- `models.py` immutable policy, version, assignment, package, and metadata models
+- `metadata.py` metadata construction helpers
+- `versioning.py` version increment helpers
+- `lifecycle.py` lifecycle state enum
+- `inheritance.py` deterministic inheritance resolution utilities
+- `validation.py` validation helpers for inheritance, baselines, versions, and assignments
+- `compiler.py` immutable package compilation implementation
+- `exceptions.py` policy framework exception hierarchy
+
 ## `backend/app/compliance`
 
 - `__init__.py` compliance domain exports
