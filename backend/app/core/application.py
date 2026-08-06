@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
 from backend.app.api.router import api_router
+from backend.app.auth.api.router import router as auth_router
 from backend.app.collectors.execution.result import CollectorExecutionResult
 from backend.app.collectors.execution.status import CollectorExecutionStatus
 from backend.app.collectors.runtime.context import CollectorRuntimeContext
@@ -154,6 +155,10 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000.0
 
+        response.headers["X-Request-ID"] = request_id
+        if request.url.path.startswith("/auth"):
+            response.headers["X-Auth-Handled"] = "true"
+
         job_id = None
         if response.headers.get("content-type", "").startswith("application/json"):
             try:
@@ -166,7 +171,6 @@ def create_application(settings: Settings | None = None) -> FastAPI:
             except Exception:
                 job_id = None
 
-        response.headers["X-Request-ID"] = request_id
         logging.getLogger("backend.app.api").info(
             "request_complete",
             extra={
@@ -178,6 +182,16 @@ def create_application(settings: Settings | None = None) -> FastAPI:
                 "job_id": job_id,
             },
         )
+        return response
+
+    @app.middleware("http")
+    async def security_headers_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Cache-Control", "no-store")
         return response
 
     @app.exception_handler(RequestValidationError)
@@ -220,4 +234,5 @@ def create_application(settings: Settings | None = None) -> FastAPI:
 
     app.state.container = container
     app.include_router(api_router)
+    app.include_router(auth_router)
     return app

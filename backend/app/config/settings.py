@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     cache_default_ttl_seconds: int = 300
     netbox_base_url: str = Field(default="", validation_alias="NETBOX_URL")
     netbox_token: str = Field(default="", validation_alias="NETBOX_TOKEN")
+    auth_secret_key: str = Field(
+        default="development-secret",
+        validation_alias="AUTH_SECRET_KEY",
+    )
+    access_token_ttl_seconds: int = 900
+    refresh_token_ttl_seconds: int = 2_592_000
     netbox_expected_version: str = "4.6.7"
     netbox_timeout_seconds: float = 10.0
     netbox_page_size: int = 100
