@@ -6,6 +6,7 @@ from alembic import context
 from backend.app.config.settings import get_settings
 from backend.app.models.base import BaseModel
 from backend.app.persistence import migrations as persistence_migrations
+from backend.app.scheduler.infrastructure import models as scheduler_models
 from sqlalchemy import engine_from_config, pool
 
 config = context.config

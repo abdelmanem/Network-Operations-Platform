@@ -37,6 +37,7 @@ from backend.app.inventory.dto import InventorySnapshot
 from backend.app.jobs.manager import JobManager
 from backend.app.jobs.repository import InMemoryJobRepository
 from backend.app.orchestration.coordinator import DiscoveryCoordinator
+from backend.app.scheduler.registry import WorkerRegistry
 from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.orchestration.workflow import WorkflowEngine
 from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
@@ -88,6 +89,7 @@ class ApplicationContainer:
     engine: OrchestrationEngine
     repository: InMemoryJobRepository
     job_manager: JobManager
+    worker_registry: WorkerRegistry
 
 
 def create_application(settings: Settings | None = None) -> FastAPI:
@@ -130,6 +132,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         engine=engine,
         repository=repository,
         job_manager=job_manager,
+        worker_registry=WorkerRegistry(),
     )
 
     @asynccontextmanager
