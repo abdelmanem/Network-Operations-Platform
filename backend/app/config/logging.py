@@ -20,6 +20,34 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info is not None:
             payload["exception"] = self.formatException(record.exc_info)
 
+        for key, value in record.__dict__.items():
+            if key in {
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "message",
+            }:
+                continue
+            if key not in payload:
+                payload[key] = value
+
         return json.dumps(payload, ensure_ascii=False)
 
 

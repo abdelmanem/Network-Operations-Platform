@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import json
+import logging
+import time
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
@@ -10,6 +14,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 
 from backend.app.api.router import api_router
 from backend.app.collectors.execution.result import CollectorExecutionResult
@@ -139,6 +144,42 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    @app.middleware("http")
+    async def request_logging_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        start_time = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+
+        job_id = None
+        if response.headers.get("content-type", "").startswith("application/json"):
+            try:
+                body = response.body
+                if isinstance(body, memoryview):
+                    body = bytes(body)
+                payload = json.loads(body.decode("utf-8"))
+                if isinstance(payload, dict) and "job_id" in payload:
+                    job_id = payload.get("job_id")
+            except Exception:
+                job_id = None
+
+        response.headers["X-Request-ID"] = request_id
+        logging.getLogger("backend.app.api").info(
+            "request_complete",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "endpoint": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round(duration_ms, 2),
+                "job_id": job_id,
+            },
+        )
+        return response
+
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(
         request: Request,
@@ -146,23 +187,35 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": exc.errors()},
+            content={"detail": exc.errors(), "error": "validation_error"},
         )
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
+        status_map = {
+            status.HTTP_400_BAD_REQUEST: "bad_request",
+            status.HTTP_401_UNAUTHORIZED: "unauthorized",
+            status.HTTP_403_FORBIDDEN: "forbidden",
+            status.HTTP_404_NOT_FOUND: "not_found",
+            status.HTTP_409_CONFLICT: "conflict",
+            status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
+        }
+        error_code = status_map.get(exc.status_code, "http_error")
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.detail},
+            content={"detail": exc.detail, "error": error_code},
         )
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Internal server error"},
+            content={
+                "detail": "Internal server error",
+                "error": "internal_server_error",
+            },
         )
 
     app.state.container = container
