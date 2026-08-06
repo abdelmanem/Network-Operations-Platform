@@ -18,6 +18,7 @@ from backend.app.policies.models import (
     PolicyVersion,
     RuleReference,
 )
+from backend.app.policies.registry import PolicyRegistry
 from backend.app.policies.repository import InMemoryPolicyRepository
 from backend.app.policies.service import PolicyService
 from backend.app.policies.versioning import VersionChange
@@ -135,6 +136,21 @@ def test_repository_is_read_only_for_published_versions() -> None:
     assert repo.get(published.id) == published
 
 
+def test_duplicate_rule_references_are_rejected() -> None:
+    policy = Policy.create(
+        key="policy-duplicate",
+        name="Duplicate Policy",
+        version=PolicyVersion.create("1.0.0"),
+        rules=(
+            RuleReference(key="rule-1", name="Rule One"),
+            RuleReference(key="rule-1", name="Rule One"),
+        ),
+    )
+
+    with pytest.raises(PolicyValidationError):
+        PolicyEngine().validate(policy)
+
+
 def test_service_exposes_compilation_and_validation() -> None:
     policy = Policy.create(
         key="policy-4",
@@ -149,6 +165,10 @@ def test_service_exposes_compilation_and_validation() -> None:
     package = service.compile(policy)
     validated = service.validate(policy)
 
+    registry = PolicyRegistry()
+    registry.register(policy)
+
     assert isinstance(package, PolicyPackage)
     assert validated.id == policy.id
     assert validated.lifecycle is PolicyLifecycle.DRAFT
+    assert registry.get(policy.key) is policy

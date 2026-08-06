@@ -10,16 +10,17 @@ from backend.app.policies.exceptions import (
 )
 from backend.app.policies.lifecycle import PolicyLifecycle
 from backend.app.policies.models import (
-    PolicyMetadata,
     BaselineReference,
     Policy,
     PolicyAssignment,
+    PolicyMetadata,
     PolicyPackage,
     PolicyScope,
     PolicyVersion,
     RuleReference,
     RuleSet,
 )
+from backend.app.policies.registry import PolicyRegistry
 from backend.app.policies.repository import InMemoryPolicyRepository
 from backend.app.policies.service import PolicyService
 from backend.app.policies.versioning import VersionChange
@@ -36,6 +37,7 @@ __all__ = [
     "PolicyLifecycle",
     "PolicyMetadata",
     "PolicyPackage",
+    "PolicyRegistry",
     "PolicyScope",
     "PolicyService",
     "PolicyValidationError",

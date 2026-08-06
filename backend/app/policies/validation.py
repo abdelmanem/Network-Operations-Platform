@@ -8,8 +8,9 @@ from backend.app.policies.exceptions import (
     CircularInheritanceError,
     InvalidAssignmentError,
     MissingBaselineError,
+    PolicyValidationError,
 )
-from backend.app.policies.models import Policy, PolicyScope
+from backend.app.policies.models import Policy
 
 
 class PolicyValidator:
@@ -17,6 +18,7 @@ class PolicyValidator:
 
     def validate(self, policy: Policy) -> Policy:
         self._validate_versions(policy)
+        self._validate_rule_references(policy)
         self._validate_inheritance(policy)
         self._validate_baselines(policy)
         self._validate_assignments(policy)
@@ -25,6 +27,11 @@ class PolicyValidator:
     def _validate_versions(self, policy: Policy) -> None:
         if not policy.version.as_string():
             raise ValueError("policy version cannot be empty")
+
+    def _validate_rule_references(self, policy: Policy) -> None:
+        keys = [rule.key for rule in policy.rules]
+        if len(keys) != len(set(keys)):
+            raise PolicyValidationError("Duplicate rule references are not allowed")
 
     def _validate_inheritance(self, policy: Policy) -> None:
         visited: set[int] = set()

@@ -83,6 +83,16 @@ class PolicyScope:
     DEVICE: ClassVar[str] = "device"
 
 
+class PolicyInheritanceScope:
+    """Supported inheritance levels for policies."""
+
+    GLOBAL: ClassVar[str] = "global"
+    ORGANIZATION: ClassVar[str] = "organization"
+    SITE: ClassVar[str] = "site"
+    DEVICE_GROUP: ClassVar[str] = "device_group"
+    DEVICE: ClassVar[str] = "device"
+
+
 @dataclass(frozen=True, slots=True)
 class PolicyMetadata:
     """Supplemental metadata for a policy."""
@@ -107,6 +117,7 @@ class Policy:
     baselines: tuple[BaselineReference, ...] = field(default_factory=tuple)
     assignments: tuple[PolicyAssignment, ...] = field(default_factory=tuple)
     inheritance: tuple[UUID, ...] = field(default_factory=tuple)
+    inheritance_scope: str = PolicyInheritanceScope.GLOBAL
     previous_version: PolicyVersion | None = None
     version_history: tuple[PolicyVersion, ...] = field(default_factory=tuple)
 
@@ -123,6 +134,7 @@ class Policy:
         baselines: tuple[BaselineReference, ...] | None = None,
         assignments: tuple[PolicyAssignment, ...] | None = None,
         inheritance: tuple[UUID, ...] | None = None,
+        inheritance_scope: str | None = None,
         previous_version: PolicyVersion | None = None,
         version_history: tuple[PolicyVersion, ...] | None = None,
     ) -> Policy:
@@ -137,6 +149,11 @@ class Policy:
             baselines=() if baselines is None else baselines,
             assignments=() if assignments is None else assignments,
             inheritance=() if inheritance is None else inheritance,
+            inheritance_scope=(
+                PolicyInheritanceScope.GLOBAL
+                if inheritance_scope is None
+                else inheritance_scope
+            ),
             previous_version=previous_version,
             version_history=() if version_history is None else version_history,
         )
@@ -155,6 +172,7 @@ class Policy:
             baselines=self.baselines,
             assignments=self.assignments,
             inheritance=self.inheritance,
+            inheritance_scope=self.inheritance_scope,
             previous_version=self.previous_version,
             version_history=self.version_history,
         )
@@ -193,6 +211,7 @@ class Policy:
             baselines=self.baselines,
             assignments=self.assignments,
             inheritance=self.inheritance,
+            inheritance_scope=self.inheritance_scope,
             previous_version=self.version,
             version_history=history + (next_version,),
         )
@@ -209,6 +228,7 @@ class Policy:
             baselines=self.baselines,
             assignments=self.assignments,
             inheritance=inheritance,
+            inheritance_scope=self.inheritance_scope,
             previous_version=self.previous_version,
             version_history=self.version_history,
         )
@@ -225,6 +245,7 @@ class Policy:
             baselines=baselines,
             assignments=self.assignments,
             inheritance=self.inheritance,
+            inheritance_scope=self.inheritance_scope,
             previous_version=self.previous_version,
             version_history=self.version_history,
         )
@@ -241,6 +262,7 @@ class Policy:
             baselines=self.baselines,
             assignments=assignments,
             inheritance=self.inheritance,
+            inheritance_scope=self.inheritance_scope,
             previous_version=self.previous_version,
             version_history=self.version_history,
         )
