@@ -259,6 +259,23 @@
 - `registry.py` handler registration
 - `dispatcher.py` event dispatcher
 
+## `backend/app/reporting`
+
+- `__init__.py` reporting package exports
+- `engine.py` orchestration for build, render, and export stages
+- `service.py` application-facing reporting service over cached history
+- `builder.py` immutable report assembly from cached context
+- `context.py` cached discovery, comparison, compliance, and historical context
+- `models.py` immutable report, section, recommendation, and document models
+- `metadata.py` immutable report metadata
+- `statistics.py` reusable statistics calculations
+- `summary.py` structured report summary generation
+- `templates.py` pluggable report template registry and definitions
+- `renderer.py` conversion of report data into a structured document tree
+- `exporters/` HTML, PDF, Excel, CSV, and JSON exporters with a shared interface
+- `sections/` executive summary, inventory, compliance, findings, discrepancies,
+  recommendations, metrics, and appendix builders
+
 ## `backend/app/dependencies`
 
 - `application.py` request-scoped application container access

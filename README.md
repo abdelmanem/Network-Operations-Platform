@@ -43,6 +43,10 @@ the Milestone 15 end-to-end orchestration engine:
   versioned routes, health and metrics endpoints, background job submission,
   job lifecycle operations, discovery history, findings, device history,
   comparison, and compliance retrieval
+- immutable reporting and export engine for executive, inventory, discovery,
+  compliance, difference, finding, historical, and technical reports with
+  reusable statistics, structured recommendations, pluggable templates, and
+  HTML/CSV/JSON/Excel/PDF export support
 
 ## Requirements
 
@@ -171,6 +175,11 @@ NetBox inventory retrieval, collector runtime execution, snapshot normalization,
 comparison, compliance evaluation, immutable persistence, progress callbacks,
 events, retries, cancellation, and run result aggregation. It intentionally does
 not add REST APIs, UI, reporting, scheduling, or notifications.
+
+Milestone 18 establishes the reporting and export engine. It builds immutable
+report models, reusable statistics and recommendations, pluggable templates,
+and exporter interfaces for HTML, CSV, JSON, Excel, and PDF output from cached
+history without introducing UI, REST endpoints, or email integrations.
 
 The detailed package map lives in `docs/project-structure.md`.
 
