@@ -47,6 +47,8 @@ the Milestone 15 end-to-end orchestration engine:
   compliance, difference, finding, historical, and technical reports with
   reusable statistics, structured recommendations, pluggable templates, and
   HTML/CSV/JSON/Excel/PDF export support
+- historical analytics engine over immutable persisted history for trend,
+  anomaly, and recommendation analysis without live collection or UI
 
 ## Requirements
 
@@ -180,6 +182,11 @@ Milestone 18 establishes the reporting and export engine. It builds immutable
 report models, reusable statistics and recommendations, pluggable templates,
 and exporter interfaces for HTML, CSV, JSON, Excel, and PDF output from cached
 history without introducing UI, REST endpoints, or email integrations.
+
+Milestone 19 establishes the historical analytics engine. It analyzes
+immutable persisted history to classify compliance, risk, and discovery
+trends, detect anomalies, and emit recommendations without introducing live
+collection, REST endpoints, or UI.
 
 The detailed package map lives in `docs/project-structure.md`.
 

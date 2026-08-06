@@ -62,6 +62,16 @@
 - `findings.py` finding history queries
 - `timeline.py` chronological history timeline queries
 
+## `backend/app/analytics`
+
+- `__init__.py` historical analytics exports
+- `context.py` typed historical run and finding context models
+- `engine.py` immutable analytics engine orchestration
+- `models.py` analytics report, recommendation, timeline, and anomaly models
+- `trends.py` trend classification helpers
+- `anomalies.py` historical anomaly detection helpers
+- `service.py` service wrapper for analytics generation
+
 ## `backend/app/evaluation`
 
 - `__init__.py` compliance evaluation engine exports
