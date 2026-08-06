@@ -5,6 +5,7 @@ from backend.app.evaluation.context import (
     EvaluationDecision,
     EvaluationException,
     EvaluationStatus,
+    PolicyEvaluationResult,
     RuleEvaluationResult,
     RuleType,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "EvaluationRuleRegistry",
     "EvaluationStatus",
     "PolicyEvaluator",
+    "PolicyEvaluationResult",
     "RecommendationBuilder",
     "RiskCalculator",
     "RuleEvaluationResult",

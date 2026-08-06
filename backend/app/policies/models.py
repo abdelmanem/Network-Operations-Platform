@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar
@@ -41,6 +42,31 @@ class PolicyVersion:
 
     def as_string(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
+
+    def __iter__(self) -> Iterator[int]:
+        yield self.major
+        yield self.minor
+        yield self.patch
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, PolicyVersion):
+            return NotImplemented
+        return tuple(self) < tuple(other)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, PolicyVersion):
+            return NotImplemented
+        return tuple(self) <= tuple(other)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, PolicyVersion):
+            return NotImplemented
+        return tuple(self) > tuple(other)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, PolicyVersion):
+            return NotImplemented
+        return tuple(self) >= tuple(other)
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,15 +208,15 @@ class Policy:
         if change is VersionChange.MAJOR:
             next_version = PolicyVersion(
                 self.version.major,
-                self.version.minor + 1,
+                0,
                 0,
                 history=history,
             )
         elif change is VersionChange.MINOR:
             next_version = PolicyVersion(
                 self.version.major,
-                self.version.minor,
-                self.version.patch,
+                self.version.minor + 1,
+                0,
                 history=history,
             )
         else:

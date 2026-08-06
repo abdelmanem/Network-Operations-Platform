@@ -15,12 +15,15 @@ from backend.app.evaluation.context import (
     EvaluationException,
     EvaluationMetrics,
     EvaluationStatus,
+    PolicyEvaluationResult,
     RuleEvaluationResult,
 )
 from backend.app.evaluation.executor import RuleExecutor
 from backend.app.evaluation.policy import PolicyEvaluator
 from backend.app.evaluation.remediation import RecommendationBuilder
 from backend.app.evaluation.scoring import ComplianceScoreCalculator, RiskCalculator
+from backend.app.policies.evaluation import PolicyPackageResolver
+from backend.app.policies.models import PolicyPackage
 
 
 @dataclass(slots=True)
@@ -28,6 +31,9 @@ class EvaluationEngine:
     """Evaluate comparison differences against compliance policies."""
 
     policy_evaluator: PolicyEvaluator = field(default_factory=PolicyEvaluator)
+    package_resolver: PolicyPackageResolver = field(
+        default_factory=PolicyPackageResolver
+    )
     risk_calculator: RiskCalculator = field(default_factory=RiskCalculator)
     score_calculator: ComplianceScoreCalculator = field(
         default_factory=ComplianceScoreCalculator
@@ -39,11 +45,18 @@ class EvaluationEngine:
     def evaluate(
         self,
         comparison_context: EvaluationContext,
-        policies: tuple[Policy, ...],
+        policies: tuple[Policy | PolicyPackage, ...],
     ) -> EvaluationDecision:
         """Evaluate policies and return an immutable decision."""
 
-        rules = self.policy_evaluator.applicable_rules(policies, comparison_context)
+        policies, package_versions = self._resolve_policy_packages(policies)
+        applicable_entries = self.policy_evaluator.applicable_rules_with_source(
+            policies, comparison_context
+        )
+        rules = tuple(rule for rule, _ in applicable_entries)
+        policy_for_rule: dict[str, Policy] = {
+            rule.key: policy for rule, policy in applicable_entries
+        }
         executor = RuleExecutor(
             risk_calculator=self.risk_calculator,
             recommendation_builder=self.recommendation_builder,
@@ -65,6 +78,9 @@ class EvaluationEngine:
             risk_score=risk_score,
             compliance_score=compliance_score,
         )
+        policy_results = self._policy_results(
+            policy_for_rule, rule_results, package_versions
+        )
         return EvaluationDecision(
             status=status,
             risk_score=risk_score,
@@ -73,6 +89,7 @@ class EvaluationEngine:
             recommendations=self._recommendations(rule_results),
             evidence=self._evidence(rule_results),
             rule_results=rule_results,
+            policy_results=policy_results,
             metrics=metrics,
         )
 
@@ -95,6 +112,30 @@ class EvaluationEngine:
                     continue
             applicable.append(rule)
         return tuple(applicable)
+
+    def _resolve_policy_packages(
+        self,
+        policies: tuple[Policy | PolicyPackage, ...],
+    ) -> tuple[tuple[Policy, ...], dict[str, str]]:
+        if not policies:
+            return (), {}
+        package_items = tuple(
+            item for item in policies if isinstance(item, PolicyPackage)
+        )
+        object_policies = tuple(
+            item for item in policies if not isinstance(item, PolicyPackage)
+        )
+        if not package_items:
+            return object_policies, {}
+
+        compiled_with_versions = self.package_resolver.resolve_with_versions(
+            package_items
+        )
+        compiled_policies = tuple(policy for policy, _ in compiled_with_versions)
+        package_versions = {
+            str(policy.id): version for policy, version in compiled_with_versions
+        }
+        return object_policies + compiled_policies, package_versions
 
     @staticmethod
     def _exception_for(
@@ -160,6 +201,39 @@ class EvaluationEngine:
             for result in rule_results
             if result.recommendation is not None
         )
+
+    def _policy_results(
+        self,
+        policy_for_rule: dict[str, Policy],
+        rule_results: tuple[RuleEvaluationResult, ...],
+        package_versions: dict[str, str],
+    ) -> tuple[PolicyEvaluationResult, ...]:
+        results_by_policy_id: dict[str, list[RuleEvaluationResult]] = {}
+        policy_by_id: dict[str, Policy] = {}
+        for result in rule_results:
+            policy = policy_for_rule.get(result.rule_key)
+            if policy is None:
+                continue
+            policy_id = str(policy.id)
+            policy_by_id[policy_id] = policy
+            results_by_policy_id.setdefault(policy_id, []).append(result)
+
+        policy_results: list[PolicyEvaluationResult] = []
+        for policy_id, results in results_by_policy_id.items():
+            policy = policy_by_id[policy_id]
+            risk_scores = tuple(result.risk_score for result in results)
+            policy_results.append(
+                PolicyEvaluationResult(
+                    policy_id=policy.id,
+                    policy_key=policy.name,
+                    version=package_versions.get(policy_id, "unknown"),
+                    status=self._status(tuple(results)),
+                    risk_score=max(risk_scores, default=0),
+                    compliance_score=self.score_calculator.score(risk_scores),
+                    rule_results=tuple(results),
+                )
+            )
+        return tuple(policy_results)
 
     @staticmethod
     def _evidence(

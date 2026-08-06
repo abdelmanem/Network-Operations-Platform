@@ -20,14 +20,25 @@ class PolicyEvaluator:
     ) -> tuple[Rule, ...]:
         """Return rules from enabled policies matching scope metadata."""
 
-        rules: list[Rule] = []
+        return tuple(
+            rule for rule, _ in self.applicable_rules_with_source(policies, context)
+        )
+
+    def applicable_rules_with_source(
+        self,
+        policies: tuple[Policy, ...],
+        context: EvaluationContext,
+    ) -> tuple[tuple[Rule, Policy], ...]:
+        """Return rules and their source policy when rules are applicable."""
+
+        rules: list[tuple[Rule, Policy]] = []
         seen: set[str] = set()
         for policy in policies:
             if not policy.enabled or not self._policy_applies(policy, context):
                 continue
             for rule in policy.rules:
                 if self._rule_applies(rule, context) and rule.key not in seen:
-                    rules.append(rule)
+                    rules.append((rule, policy))
                     seen.add(rule.key)
         return tuple(rules)
 
@@ -51,5 +62,9 @@ class PolicyEvaluator:
         if "role" in required and required["role"] != context.device_role:
             return False
         if "platform" in required and required["platform"] != context.platform:
+            return False
+        if "vendor" in required and required["vendor"] != context.vendor:
+            return False
+        if "device_type" in required and required["device_type"] != context.device_type:
             return False
         return True

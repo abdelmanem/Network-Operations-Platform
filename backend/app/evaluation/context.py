@@ -90,6 +90,19 @@ class RuleEvaluationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyEvaluationResult:
+    """Immutable per-policy compliance evaluation result."""
+
+    policy_id: UUID
+    policy_key: str
+    version: str
+    status: EvaluationStatus
+    risk_score: int
+    compliance_score: int
+    rule_results: tuple[RuleEvaluationResult, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationMetrics:
     """Evaluation metrics snapshot."""
 
@@ -116,6 +129,7 @@ class EvaluationDecision:
     recommendations: tuple[Recommendation, ...] = field(default_factory=tuple)
     evidence: tuple[Evidence, ...] = field(default_factory=tuple)
     rule_results: tuple[RuleEvaluationResult, ...] = field(default_factory=tuple)
+    policy_results: tuple[PolicyEvaluationResult, ...] = field(default_factory=tuple)
     metrics: EvaluationMetrics | None = None
     decided_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -145,6 +159,18 @@ class EvaluationContext:
         """Return optional platform scope."""
 
         return self._text("platform")
+
+    @property
+    def vendor(self) -> str | None:
+        """Return optional vendor scope."""
+
+        return self._text("vendor")
+
+    @property
+    def device_type(self) -> str | None:
+        """Return optional device type scope."""
+
+        return self._text("device_type")
 
     def _text(self, key: str) -> str | None:
         value = self.metadata.get(key)
