@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from io import BytesIO
 
 from backend.app.reporting.enums import ExportFormat
@@ -31,6 +34,9 @@ class PdfExporter:
 
 
 def _html_to_pdf(html_content: bytes) -> bytes:
+    if not _is_weasyprint_supported():
+        return _fallback_pdf(html_content)
+
     try:
         from weasyprint import HTML  # type: ignore[import-untyped]
     except (ImportError, OSError, RuntimeError):
@@ -43,6 +49,24 @@ def _html_to_pdf(html_content: bytes) -> bytes:
         return _fallback_pdf(html_content)
 
     return buffer.getvalue()
+
+
+@lru_cache(maxsize=1)
+def _is_weasyprint_supported() -> bool:
+    if sys.platform.startswith("win"):
+        return False
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", "import weasyprint"],
+            capture_output=True,
+            check=True,
+            timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+    return result.returncode == 0
 
 
 def _fallback_pdf(html_content: bytes) -> bytes:

@@ -29,7 +29,7 @@ from backend.app.core.constants import APP_NAME, APP_PACKAGE, APP_VERSION
 from backend.app.core.lifecycle import ApplicationLifecycleManager, lifecycle_context
 from backend.app.core.metadata import ApplicationMetadata
 from backend.app.core.plugins import PluginRegistry
-from backend.app.database.session import SessionLocal
+from backend.app.database.session import SessionLocal, initialize_database
 from backend.app.evaluation.engine import EvaluationEngine
 from backend.app.events.dispatcher import EventDispatcher
 from backend.app.events.registry import EventHandlerRegistry
@@ -37,10 +37,10 @@ from backend.app.inventory.dto import InventorySnapshot
 from backend.app.jobs.manager import JobManager
 from backend.app.jobs.repository import InMemoryJobRepository
 from backend.app.orchestration.coordinator import DiscoveryCoordinator
-from backend.app.scheduler.registry import WorkerRegistry
 from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.orchestration.workflow import WorkflowEngine
 from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
+from backend.app.scheduler.registry import WorkerRegistry
 
 
 class _PlaceholderInventoryService:
@@ -104,6 +104,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         package=APP_PACKAGE,
         description="Core framework for Network Operations Platform.",
     )
+    initialize_database()
+
     lifecycle_manager = ApplicationLifecycleManager()
     event_registry = EventHandlerRegistry()
     event_dispatcher = EventDispatcher(event_registry)

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
-from backend.app.jobs.models import JobRequest
+from backend.app.jobs.models import JobRequest, JobSubmissionResult
 from backend.app.orchestration.context import CancellationToken, OrchestrationContext
 from backend.app.scheduler.models import (
     ExecutionResult,
@@ -24,7 +24,7 @@ from backend.app.schemas.scheduler import (
 
 
 class _JobManagerProtocol(Protocol):
-    async def submit_job(self, request: object) -> object: ...
+    async def submit_job(self, request: JobRequest) -> JobSubmissionResult: ...
 
 
 class SchedulerService:

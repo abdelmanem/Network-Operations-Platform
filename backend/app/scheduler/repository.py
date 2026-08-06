@@ -114,7 +114,7 @@ class SQLAlchemySchedulerRepository(SchedulerRepository):
 
     async def get_schedule(self, schedule_id: UUID) -> Schedule | None:
         row = self._session.get(ScheduleRecord, schedule_id)
-        return self._to_schedule(row) if row is not None else None
+        return None if row is None else self._to_schedule(row)
 
     async def list_schedules(self) -> tuple[Schedule, ...]:
         statement = select(ScheduleRecord)
@@ -149,9 +149,9 @@ class SQLAlchemySchedulerRepository(SchedulerRepository):
         rows = self._session.scalars(statement).all()
         return tuple(self._to_execution(row) for row in rows)
 
-    def _to_schedule(self, row: ScheduleRecord | None) -> Schedule | None:
+    def _to_schedule(self, row: ScheduleRecord | None) -> Schedule:
         if row is None:
-            return None
+            raise ValueError("Schedule record is missing")
         return Schedule(
             id=row.id,
             name=row.name,

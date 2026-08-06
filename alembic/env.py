@@ -9,6 +9,9 @@ from backend.app.persistence import migrations as persistence_migrations
 from backend.app.scheduler.infrastructure import models as scheduler_models
 from sqlalchemy import engine_from_config, pool
 
+assert scheduler_models.ScheduleRecord is not None
+assert scheduler_models.ScheduleExecutionRecord is not None
+
 config = context.config
 
 if config.config_file_name is not None:
