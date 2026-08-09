@@ -31,11 +31,13 @@ from backend.app.core.metadata import ApplicationMetadata
 from backend.app.core.plugins import PluginRegistry
 from backend.app.database.session import SessionLocal, initialize_database
 from backend.app.evaluation.engine import EvaluationEngine
+from backend.app.events.bus import EventBus
 from backend.app.events.dispatcher import EventDispatcher
 from backend.app.events.registry import EventHandlerRegistry
 from backend.app.inventory.dto import InventorySnapshot
 from backend.app.jobs.manager import JobManager
 from backend.app.jobs.repository import InMemoryJobRepository
+from backend.app.notifications.service import NotificationService
 from backend.app.orchestration.coordinator import DiscoveryCoordinator
 from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.orchestration.workflow import WorkflowEngine
@@ -86,6 +88,8 @@ class ApplicationContainer:
     lifecycle: ApplicationLifecycleManager
     event_registry: EventHandlerRegistry
     event_dispatcher: EventDispatcher
+    event_bus: EventBus
+    notification_service: NotificationService
     engine: OrchestrationEngine
     repository: InMemoryJobRepository
     job_manager: JobManager
@@ -109,6 +113,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     lifecycle_manager = ApplicationLifecycleManager()
     event_registry = EventHandlerRegistry()
     event_dispatcher = EventDispatcher(event_registry)
+    event_bus = EventBus(registry=event_registry)
+    notification_service = NotificationService(adapters={}, mappings=[])
     workflow = WorkflowEngine(
         inventory_service=_PlaceholderInventoryService(),
         discovery_coordinator=DiscoveryCoordinator(_PlaceholderCollectorRuntime()),
@@ -121,7 +127,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     job_manager = JobManager(
         engine=engine,
         repository=repository,
-        event_publisher=None,
+        event_publisher=event_bus,
         worker_count=1,
     )
     container = ApplicationContainer(
@@ -131,6 +137,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         lifecycle=lifecycle_manager,
         event_registry=event_registry,
         event_dispatcher=event_dispatcher,
+        event_bus=event_bus,
+        notification_service=notification_service,
         engine=engine,
         repository=repository,
         job_manager=job_manager,

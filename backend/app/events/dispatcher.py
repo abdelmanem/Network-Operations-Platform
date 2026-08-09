@@ -20,10 +20,14 @@ class EventDispatcher(EventPublisher):
     async def publish(self, event: BaseEvent) -> None:
         """Publish an event to all matching handlers."""
 
+        errors: list[Exception] = []
         for handler in self.registry.handlers_for(event.name):
             try:
                 result = handler(event)
                 if isawaitable(result):
                     await result
             except Exception as exc:  # pragma: no cover - defensive guard
-                raise EventError(f"Failed to dispatch event '{event.name}'.") from exc
+                errors.append(exc)
+
+        if errors:
+            raise EventError(f"Failed to dispatch event '{event.name}'.") from errors[0]

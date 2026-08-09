@@ -41,3 +41,7 @@ class ServiceError(ApplicationError):
 
 class EventError(ApplicationError):
     """Raised when event dispatch or handling fails."""
+
+
+class UnsupportedNotificationChannelError(ApplicationError):
+    """Raised when a notification event has no registered channel adapter."""
