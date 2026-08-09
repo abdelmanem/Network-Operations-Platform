@@ -214,7 +214,7 @@ class SQLAlchemyAuditEventRepository(AuditEventRepository):
     ) -> AuditEvent:
         row = AuthAuditEvent(
             event_type=event_type,
-            subject_id=subject_id,
+            subject_id=subject_id or actor_id,
             actor_id=actor_id,
             metadata_payload="{}" if metadata is None else str(metadata),
         )

@@ -8,6 +8,7 @@ import time
 from typing import Any
 from uuid import UUID
 
+from backend.app.audit.application.services import AuditService
 from backend.app.auth.domain.models import Role, TokenPair, User
 from backend.app.auth.infrastructure.repositories import (
     AuditEventRepository,
@@ -104,6 +105,7 @@ class AuthenticationService:
         token_service: TokenService,
         access_token_ttl_seconds: int = 900,
         refresh_token_ttl_seconds: int = 2_592_000,
+        audit_service: AuditService | None = None,
     ) -> None:
         self.user_repository = user_repository
         self.role_repository = role_repository
@@ -113,6 +115,7 @@ class AuthenticationService:
         self.token_service = token_service
         self.access_token_ttl_seconds = access_token_ttl_seconds
         self.refresh_token_ttl_seconds = refresh_token_ttl_seconds
+        self.audit_service = audit_service
 
     def register_user(
         self,
@@ -142,9 +145,18 @@ class AuthenticationService:
         )
         self.audit_repository.create(
             event_type="user_registered",
-            subject_id=user.id,
+            actor_id=user.id,
             metadata={"username": username},
         )
+        if self.audit_service is not None:
+            self.audit_service.record_security_event(
+                event_type="user_registered",
+                actor_id=user.id,
+                resource_type="user",
+                resource_id=str(user.id),
+                outcome="success",
+                metadata={"username": username},
+            )
         return user
 
     def authenticate_user(self, username: str, password: str) -> TokenPair:
@@ -174,9 +186,18 @@ class AuthenticationService:
         )
         self.audit_repository.create(
             event_type="login",
-            subject_id=user.id,
+            actor_id=user.id,
             metadata={"username": user.username},
         )
+        if self.audit_service is not None:
+            self.audit_service.record_security_event(
+                event_type="authentication.success",
+                actor_id=user.id,
+                resource_type="user",
+                resource_id=str(user.id),
+                outcome="success",
+                metadata={"username": user.username},
+            )
         return TokenPair(access_token=access_token, refresh_token=refresh_token)
 
     def refresh_access_token(self, refresh_token: str) -> TokenPair:
@@ -212,13 +233,33 @@ class AuthorizationService:
         *,
         user_repository: UserRepository,
         role_repository: RoleRepository,
+        audit_repository: AuditEventRepository | None = None,
+        audit_service: AuditService | None = None,
     ) -> None:
         self.user_repository = user_repository
         self.role_repository = role_repository
+        self.audit_repository = audit_repository
+        self.audit_service = audit_service
 
     def authorize(self, user: User, permission_name: str) -> bool:
-        return any(
+        authorized = any(
             permission.name == permission_name
             for role in user.roles
             for permission in role.permissions
         )
+        if not authorized and self.audit_service is not None:
+            self.audit_service.record_security_event(
+                event_type="authorization.denied",
+                actor_id=user.id,
+                resource_type="permission",
+                resource_id=permission_name,
+                outcome="denied",
+                metadata={"permission": permission_name},
+            )
+        elif not authorized and self.audit_repository is not None:
+            self.audit_repository.create(
+                event_type="authorization.denied",
+                actor_id=user.id,
+                metadata={"permission": permission_name},
+            )
+        return authorized

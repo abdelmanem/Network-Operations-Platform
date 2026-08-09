@@ -19,9 +19,12 @@ class EventHandlerRegistry:
         self._handlers.setdefault(event_name, []).append(handler)
 
     def handlers_for(self, event_name: str) -> tuple[EventHandler, ...]:
-        """Return the handlers for an event."""
+        """Return the handlers for an event, including wildcard subscriptions."""
 
-        return tuple(self._handlers.get(event_name, ()))
+        handlers: list[EventHandler] = []
+        handlers.extend(self._handlers.get(event_name, ()))
+        handlers.extend(self._handlers.get("*", ()))
+        return tuple(handlers)
 
     def clear(self) -> None:
         """Remove all handlers."""
