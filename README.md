@@ -93,6 +93,10 @@ Expected response:
 {"status":"ok","version":"0.1.0"}
 ```
 
+```
+ .\.venv\Scripts\python -m ruff check . ; .\.venv\Scripts\python -m black --check . ; .\.venv\Scripts\python -m mypy backend ; .\.venv\Scripts\python -m pytest
+```
+
 ## Project Structure
 
 - `backend/app/main.py` application entrypoint

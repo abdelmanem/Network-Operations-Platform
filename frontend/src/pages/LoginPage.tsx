@@ -1,0 +1,45 @@
+import { useState, type FormEvent } from 'react'
+import { useAuth } from '../hooks/useAuth'
+
+export function LoginPage() {
+  const { login } = useAuth()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    try {
+      await login(username, password)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed')
+    }
+  }
+
+  return (
+    <div className="auth-card">
+      <h2>Sign in</h2>
+      <p className="muted">Use your backend credentials to continue.</p>
+      <form onSubmit={onSubmit}>
+        <label>
+          Username
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {error ? <p className="error-text">{error}</p> : null}
+        <button type="submit">Continue</button>
+      </form>
+    </div>
+  )
+}
