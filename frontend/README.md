@@ -1,32 +1,33 @@
-# React + TypeScript + Vite
+# Frontend foundation
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## Architecture
 
-Currently, two official plugins are available:
+The frontend is a React + TypeScript + Vite application that consumes the existing FastAPI backend through a typed API client.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Directory structure
 
-## React Compiler
+- src/app: application shell and route composition
+- src/api: centralized HTTP client and typed API helpers
+- src/auth: authentication context and protected route handling
+- src/components: shared UI components
+- src/layouts: shell/layout components
+- src/pages: route-level views
+- src/routes: route metadata
+- src/hooks: reusable hooks
+- src/types: shared request/response contracts
+- src/styles: styling entry points
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Authentication
 
-## Expanding the Oxlint configuration
+Authentication uses the backend /auth/login and /auth/me endpoints via a bearer token stored in browser local storage.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Environment variables
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+- VITE_API_BASE_URL: API base URL for the FastAPI backend.
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Development
+
+- npm install
+- npm run dev
+- npm run build
+- npm run test

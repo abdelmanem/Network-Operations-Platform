@@ -12,6 +12,7 @@ import { JobsPage } from './pages/JobsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { NotificationsPage } from './pages/NotificationsPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { isAuthenticated, status } = useAuth()
@@ -27,34 +28,39 @@ function ProtectedRoute({ children }: { children: ReactElement }) {
   return children
 }
 
-const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    path: '/',
-    element: (
-      <ProtectedRoute>
-        <Layout />
-      </ProtectedRoute>
-    ),
-    errorElement: <ErrorBoundary> </ErrorBoundary>,
-    children: [
-      { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'discovery', element: <DiscoveryPage /> },
-      { path: 'compliance', element: <CompliancePage /> },
-      { path: 'jobs', element: <JobsPage /> },
-      { path: 'notifications', element: <NotificationsPage /> },
-      { path: 'audit', element: <AuditPage /> },
-      { path: '*', element: <NotFoundPage /> },
-    ],
-  },
-  { path: '*', element: <NotFoundPage /> },
-])
+function createAppRouter() {
+  return createBrowserRouter([
+    {
+      path: '/login',
+      element: <LoginPage />,
+    },
+    {
+      path: '/',
+      element: (
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      ),
+      errorElement: <ErrorBoundary> </ErrorBoundary>,
+      children: [
+        { index: true, element: <Navigate to="/dashboard" replace /> },
+        { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'discovery', element: <DiscoveryPage /> },
+        { path: 'compliance', element: <CompliancePage /> },
+        { path: 'jobs', element: <JobsPage /> },
+        { path: 'notifications', element: <NotificationsPage /> },
+        { path: 'audit', element: <AuditPage /> },
+        { path: 'settings', element: <SettingsPage /> },
+        { path: '*', element: <NotFoundPage /> },
+      ],
+    },
+    { path: '*', element: <NotFoundPage /> },
+  ])
+}
 
 function App() {
+  const router = createAppRouter()
+
   return (
     <ErrorBoundary>
       <AuthProvider>

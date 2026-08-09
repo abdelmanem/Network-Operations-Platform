@@ -59,6 +59,13 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+  gap: 1rem;
+}
+
+.topbar-link {
+  color: #eff6ff;
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .page {
@@ -83,6 +90,10 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 0.9rem;
   padding: 1rem;
+}
+
+.card.success {
+  border-color: rgba(74, 222, 128, 0.45);
 }
 
 .auth-card {
@@ -133,5 +144,10 @@ button {
   .sidebar {
     border-right: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

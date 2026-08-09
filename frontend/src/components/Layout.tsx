@@ -1,30 +1,29 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { moduleRoutes } from '../routes/moduleRoutes'
 
-const navItems = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/discovery', label: 'Discovery' },
-  { to: '/compliance', label: 'Compliance' },
-  { to: '/jobs', label: 'Jobs' },
-  { to: '/notifications', label: 'Notifications' },
-  { to: '/audit', label: 'Audit' },
-]
+function getPageTitle(pathname: string) {
+  const match = moduleRoutes.find((route) => route.path === pathname)
+  return match?.label ?? 'Platform'
+}
 
 export function Layout() {
   const { user, logout } = useAuth()
+  const location = useLocation()
+  const title = getPageTitle(location.pathname)
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div>
           <h1>Network Operations Platform</h1>
-          <p className="muted">Production baseline frontend</p>
+          <p className="muted">Frontend foundation baseline</p>
         </div>
-        <nav>
-          {navItems.map((item) => (
+        <nav aria-label="Primary navigation">
+          {moduleRoutes.map((item) => (
             <NavLink
-              key={item.to}
-              to={item.to}
+              key={item.path}
+              to={item.path}
               className={({ isActive }: { isActive: boolean }) =>
                 isActive ? 'nav-link active' : 'nav-link'
               }
@@ -42,7 +41,12 @@ export function Layout() {
       </aside>
       <main className="content">
         <header className="topbar">
-          <Link to="/dashboard">Operations Console</Link>
+          <div>
+            <Link to="/dashboard" className="topbar-link">
+              Operations Console
+            </Link>
+            <p className="muted">{title}</p>
+          </div>
           <span className="muted">Frontend foundation baseline</span>
         </header>
         <section className="page">

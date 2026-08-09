@@ -94,6 +94,10 @@ Expected response:
 ```
 
 ```
+.\.venv\Scripts\python.exe -m backend.app.cli create-admin  
+```
+
+```
  .\.venv\Scripts\python -m ruff check . ; .\.venv\Scripts\python -m black --check . ; .\.venv\Scripts\python -m mypy backend ; .\.venv\Scripts\python -m pytest
 ```
 

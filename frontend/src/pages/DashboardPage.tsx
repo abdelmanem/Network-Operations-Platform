@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { StatusCard } from '../components/StatusCard'
 import { getDashboardKpis, getDashboardTrends } from '../services/api'
 import type {
   DashboardKpiSummaryResponse,
@@ -6,12 +7,8 @@ import type {
 } from '../types/api'
 
 export function DashboardPage() {
-  const [summary, setSummary] = useState<DashboardKpiSummaryResponse | null>(
-    null,
-  )
-  const [trends, setTrends] = useState<DashboardTrendsResponseEnvelope | null>(
-    null,
-  )
+  const [summary, setSummary] = useState<DashboardKpiSummaryResponse | null>(null)
+  const [trends, setTrends] = useState<DashboardTrendsResponseEnvelope | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -27,9 +24,7 @@ export function DashboardPage() {
         setSummary(kpis)
         setTrends(trendsResponse)
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Unable to load dashboard data',
-        )
+        setError(err instanceof Error ? err.message : 'Unable to load dashboard data')
       } finally {
         setIsLoading(false)
       }
@@ -49,26 +44,19 @@ export function DashboardPage() {
   return (
     <div>
       <h2>Dashboard</h2>
-      <p className="muted">Backend dashboard contract placeholder.</p>
+      <p className="muted">System status and module availability.</p>
       <div className="card-grid">
-        <article className="card">
-          <h3>Total devices</h3>
-          <p>{summary?.total_devices ?? 'Unavailable'}</p>
-        </article>
-        <article className="card">
-          <h3>Discovery success</h3>
-          <p>{summary?.discovery_success_pct ?? 'Unavailable'}</p>
-        </article>
-        <article className="card">
-          <h3>Findings</h3>
-          <p>{summary?.findings_total ?? 'Unavailable'}</p>
-        </article>
+        <StatusCard title="Authentication" value="Connected" accent="success" />
+        <StatusCard title="API" value="Connected" accent="success" />
+        <StatusCard title="Frontend" value="Operational" accent="success" />
       </div>
       <div className="card-grid">
-        <article className="card">
-          <h3>Trend snapshot</h3>
-          <p>{trends ? 'Available from backend contract' : 'Pending'}</p>
-        </article>
+        <StatusCard title="Total devices" value={summary?.total_devices?.toString() ?? 'Unavailable'} />
+        <StatusCard title="Discovery success" value={summary?.discovery_success_pct?.toString() ?? 'Unavailable'} />
+        <StatusCard title="Findings" value={summary?.findings_total?.toString() ?? 'Unavailable'} />
+      </div>
+      <div className="card-grid">
+        <StatusCard title="Trend snapshot" value={trends ? 'Available from backend contract' : 'Pending'} />
       </div>
     </div>
   )
