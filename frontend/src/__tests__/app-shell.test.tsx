@@ -13,6 +13,9 @@ const { mockLogin, mockGetCurrentUser, mockGetDashboardKpis, mockGetDashboardTre
 vi.mock('../services/api', () => ({
   login: mockLogin,
   getCurrentUser: mockGetCurrentUser,
+}))
+
+vi.mock('../api/dashboard', () => ({
   getDashboardKpis: mockGetDashboardKpis,
   getDashboardTrends: mockGetDashboardTrends,
 }))
@@ -158,7 +161,9 @@ describe('frontend foundation shell', () => {
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(/operations dashboard/i)).toBeInTheDocument()
+    })
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }))
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
