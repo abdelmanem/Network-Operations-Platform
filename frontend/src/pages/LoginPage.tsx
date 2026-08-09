@@ -1,19 +1,26 @@
 import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
 export function LoginPage() {
   const { login } = useAuth()
+  const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError(null)
+    setIsSubmitting(true)
     try {
       await login(username, password)
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -38,7 +45,9 @@ export function LoginPage() {
           />
         </label>
         {error ? <p className="error-text">{error}</p> : null}
-        <button type="submit">Continue</button>
+        <button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Signing in…' : 'Continue'}
+        </button>
       </form>
     </div>
   )

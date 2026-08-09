@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
+
 from backend.app.auth.application.services import (
     AuthenticationService,
     AuthorizationService,
     PasswordHashingService,
     TokenService,
 )
-from backend.app.auth.infrastructure.models import BaseModel
+from backend.app.auth.infrastructure.models import AuthAuditEvent, BaseModel
 from backend.app.auth.infrastructure.repositories import (
     SQLAlchemyAuditEventRepository,
     SQLAlchemyPermissionRepository,
@@ -87,5 +89,77 @@ def test_authentication_and_authorization_flow() -> None:
     event = audit_repo.list(limit=1)[0]
     assert event.event_type == "login"
     assert event.subject_id == current.id
+
+    session.close()
+
+
+def test_audit_event_metadata_json_round_trip() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    BaseModel.metadata.create_all(engine)
+    session = Session(engine)
+
+    audit_repo = SQLAlchemyAuditEventRepository(session)
+    nested_metadata = {
+        "username": "test",
+        "source": "cli",
+        "details": {"operation": "create-admin", "success": True},
+    }
+
+    event = audit_repo.create(
+        event_type="user_registered",
+        actor_id=None,
+        metadata=nested_metadata,
+    )
+
+    assert event.metadata == nested_metadata
+
+    row = session.query(AuthAuditEvent).filter_by(id=event.id).one()
+    assert row.metadata_payload.startswith("{")
+    assert "'username'" not in row.metadata_payload
+    assert json.loads(row.metadata_payload) == nested_metadata
+
+    listed = audit_repo.list(limit=1)[0]
+    assert listed.metadata == nested_metadata
+
+    session.close()
+
+
+def test_audit_event_metadata_none_becomes_empty_object() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    BaseModel.metadata.create_all(engine)
+    session = Session(engine)
+
+    audit_repo = SQLAlchemyAuditEventRepository(session)
+    event = audit_repo.create(event_type="login", actor_id=None, metadata=None)
+
+    row = session.query(AuthAuditEvent).filter_by(id=event.id).one()
+    assert row.metadata_payload == "{}"
+    assert event.metadata == {}
+    assert audit_repo.list(limit=1)[0].metadata == {}
+
+    session.close()
+
+
+def test_audit_event_legacy_malformed_payload_is_preserved() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    BaseModel.metadata.create_all(engine)
+    session = Session(engine)
+
+    legacy_payload = "{'username': 'legacy_user'}"
+    legacy_row = AuthAuditEvent(
+        event_type="user_registered",
+        subject_id=None,
+        actor_id=None,
+        metadata_payload=legacy_payload,
+    )
+    session.add(legacy_row)
+    session.commit()
+
+    audit_repo = SQLAlchemyAuditEventRepository(session)
+    listed = audit_repo.list(limit=1)[0]
+
+    assert listed.metadata == {"raw": legacy_payload}
+    legacy_row_result = session.query(AuthAuditEvent).filter_by(id=legacy_row.id).one()
+    assert legacy_row_result.metadata_payload == legacy_payload
 
     session.close()

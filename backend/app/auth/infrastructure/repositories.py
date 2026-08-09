@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from backend.app.auth.domain.models import AuditEvent, Permission, Role, User
@@ -204,6 +205,14 @@ class SQLAlchemyAuditEventRepository(AuditEventRepository):
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def _parse_metadata(self, metadata_payload: str | None) -> dict[str, Any]:
+        if not metadata_payload:
+            return {}
+        try:
+            return cast(dict[str, Any], json.loads(metadata_payload))
+        except (TypeError, json.JSONDecodeError):
+            return {"raw": metadata_payload}
+
     def create(
         self,
         *,
@@ -216,7 +225,7 @@ class SQLAlchemyAuditEventRepository(AuditEventRepository):
             event_type=event_type,
             subject_id=subject_id or actor_id,
             actor_id=actor_id,
-            metadata_payload="{}" if metadata is None else str(metadata),
+            metadata_payload=json.dumps(metadata or {}, separators=(",", ":")),
         )
         self.session.add(row)
         self.session.commit()
@@ -226,7 +235,7 @@ class SQLAlchemyAuditEventRepository(AuditEventRepository):
             event_type=row.event_type,
             subject_id=row.subject_id,
             actor_id=row.actor_id,
-            metadata={"raw": row.metadata_payload},
+            metadata=self._parse_metadata(row.metadata_payload),
             created_at=row.created_at,
         )
 
@@ -243,7 +252,7 @@ class SQLAlchemyAuditEventRepository(AuditEventRepository):
                 event_type=row.event_type,
                 subject_id=row.subject_id,
                 actor_id=row.actor_id,
-                metadata={"raw": row.metadata_payload},
+                metadata=self._parse_metadata(row.metadata_payload),
                 created_at=row.created_at,
             )
             for row in rows

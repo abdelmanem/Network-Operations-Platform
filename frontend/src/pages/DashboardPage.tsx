@@ -13,9 +13,12 @@ export function DashboardPage() {
     null,
   )
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const load = async () => {
+      setIsLoading(true)
+      setError(null)
       try {
         const [kpis, trendsResponse] = await Promise.all([
           getDashboardKpis(),
@@ -27,11 +30,17 @@ export function DashboardPage() {
         setError(
           err instanceof Error ? err.message : 'Unable to load dashboard data',
         )
+      } finally {
+        setIsLoading(false)
       }
     }
 
     void load()
   }, [])
+
+  if (isLoading) {
+    return <div className="loading-state">Loading dashboard…</div>
+  }
 
   if (error) {
     return <div className="error-state">{error}</div>
