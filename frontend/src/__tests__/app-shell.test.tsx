@@ -2,13 +2,19 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 
-const { mockLogin, mockGetCurrentUser, mockGetDashboardKpis, mockGetDashboardTrends } =
-  vi.hoisted(() => ({
-    mockLogin: vi.fn(),
-    mockGetCurrentUser: vi.fn(),
-    mockGetDashboardKpis: vi.fn(),
-    mockGetDashboardTrends: vi.fn(),
-  }))
+const {
+  mockLogin,
+  mockGetCurrentUser,
+  mockGetDashboardKpis,
+  mockGetDashboardTrends,
+  mockGetJobs,
+} = vi.hoisted(() => ({
+  mockLogin: vi.fn(),
+  mockGetCurrentUser: vi.fn(),
+  mockGetDashboardKpis: vi.fn(),
+  mockGetDashboardTrends: vi.fn(),
+  mockGetJobs: vi.fn(),
+}))
 
 vi.mock('../services/api', () => ({
   login: mockLogin,
@@ -18,6 +24,11 @@ vi.mock('../services/api', () => ({
 vi.mock('../api/dashboard', () => ({
   getDashboardKpis: mockGetDashboardKpis,
   getDashboardTrends: mockGetDashboardTrends,
+}))
+
+vi.mock('../api/jobs', () => ({
+  getJobs: mockGetJobs,
+  cancelJob: vi.fn(),
 }))
 
 describe('frontend foundation shell', () => {
@@ -87,6 +98,13 @@ describe('frontend foundation shell', () => {
         },
       },
     })
+    mockGetJobs.mockResolvedValue({
+      items: [],
+      page: 1,
+      page_size: 20,
+      total: 0,
+      has_next: false,
+    })
   })
 
   it('renders the login screen when unauthenticated', () => {
@@ -136,14 +154,14 @@ describe('frontend foundation shell', () => {
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
 
-  it('renders shell navigation and baseline empty states', async () => {
+  it('renders shell navigation and the jobs empty state', async () => {
     localStorage.setItem('auth-token', 'token')
     window.history.pushState({}, '', '/jobs')
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: /jobs/i })).toBeInTheDocument()
     expect(screen.getByRole('navigation')).toBeInTheDocument()
-    expect(screen.getByText(/no jobs are currently available/i)).toBeInTheDocument()
+    expect(screen.getByText(/no jobs have been created yet/i)).toBeInTheDocument()
   })
 
   it('shows a dashboard error state when the backend contract is unavailable', async () => {

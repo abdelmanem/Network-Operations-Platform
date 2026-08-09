@@ -64,3 +64,60 @@ export interface DashboardTrendsResponseEnvelope {
     drift_trend: DashboardTrendEntryResponse
   }
 }
+
+export interface DiscoveryRunSummaryResponse {
+  id: string
+  target_identifier: string
+  target_address: string | null
+  status: string
+  metadata: Record<string, unknown>
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface DiscoveryRunListResponse {
+  items: DiscoveryRunSummaryResponse[]
+  page: number
+  page_size: number
+  total: number
+  has_next: boolean
+}
+
+export interface DiscoveryJobRequest {
+  collector_contexts: Array<{
+    target: {
+      identifier: string
+      address: string
+      metadata?: Record<string, unknown>
+    }
+  }>
+  policies: Array<Record<string, unknown>>
+  metadata: Record<string, unknown>
+  priority: number
+  timeout_seconds: number | null
+}
+
+export interface DiscoveryJobSubmissionResponse {
+  job_id: string
+  status: string
+  message: string
+}
+
+export interface JobStatusResponse {
+  job_id: string
+  status: string
+  message: string | null
+  created_at: string
+  updated_at: string
+  attempts: number
+  progress: number | null
+}
+
+export interface JobListResponse {
+  items: JobStatusResponse[]
+  page: number
+  page_size: number
+  total: number
+  has_next: boolean
+}

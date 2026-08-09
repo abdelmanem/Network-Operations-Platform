@@ -42,6 +42,35 @@ Frontend tests cover KPI loading, KPI success, KPI empty state, KPI API failure,
 
 Authentication uses the backend /auth/login and /auth/me endpoints via a bearer token stored in browser local storage.
 
+## Discovery & Jobs (M29)
+
+### API dependencies
+
+The Discovery and Jobs experience consumes the existing FastAPI contracts:
+
+- GET /api/v1/history/discovery-runs for discovery run history
+- POST /api/v1/jobs/discovery to submit a discovery job
+- GET /api/v1/jobs for the job list
+- GET /api/v1/jobs/{job_id} for job status details
+- DELETE /api/v1/jobs/{job_id} to cancel a job
+
+### Request / response mapping
+
+- Discovery list rows map from discovery run history summaries, including target identifier, address, status, and timestamps.
+- Discovery submission maps the browser form into the existing discovery job request payload using collector_contexts, policies, metadata, priority, and timeout_seconds.
+- Jobs list and status views map from the jobs API response model, including status, message, created/updated timestamps, attempts, and progress where available.
+
+### Route structure
+
+- /discovery renders the discovery workspace and create/run workflow.
+- /jobs renders the jobs workspace and cancelable job list.
+
+### State handling
+
+- Discovery and Jobs views distinguish loading, ready, empty, and error states.
+- Mutation feedback shows submitting and retry/cancel actions with inline error messaging.
+- The UI only exposes controls that correspond to backend-supported operations.
+
 ## Environment variables
 
 - VITE_API_BASE_URL: API base URL for the FastAPI backend.
