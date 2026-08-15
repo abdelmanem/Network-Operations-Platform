@@ -160,6 +160,85 @@ class SnapshotRepository:
         )
         return tuple(self.session.scalars(statement).all())
 
+    def get_latest(self, source: str) -> SnapshotRecord | None:
+        """Return the most recent snapshot for a given source ('netbox' or 'live')."""
+
+        source_value = source.upper() if source else ""
+        statement = (
+            self._with_children(select(SnapshotRecord))
+            .where(SnapshotRecord.source == source_value)
+            .order_by(SnapshotRecord.created_at.desc())
+            .limit(1)
+        )
+        return self.session.scalars(statement).first()
+
+    def get_snapshot_devices(
+        self,
+        snapshot_id: UUID,
+        device_id: str | None = None,
+    ) -> tuple[SnapshotDeviceRecord, ...]:
+        """Return all devices in a snapshot, optionally filtered by device_id."""
+
+        statement = select(SnapshotDeviceRecord).where(
+            SnapshotDeviceRecord.snapshot_id == snapshot_id
+        )
+        if device_id:
+            statement = statement.where(SnapshotDeviceRecord.device_id == device_id)
+        statement = statement.options(
+            selectinload(SnapshotDeviceRecord.interfaces),
+            selectinload(SnapshotDeviceRecord.vlans),
+            selectinload(SnapshotDeviceRecord.neighbors),
+        )
+        return tuple(self.session.scalars(statement).all())
+
+    def get_snapshot_interfaces(
+        self,
+        snapshot_id: UUID,
+        device_id: str | None = None,
+    ) -> tuple[SnapshotInterfaceRecord, ...]:
+        """Return all interfaces in a snapshot, optionally filtered by device."""
+
+        statement = (
+            select(SnapshotInterfaceRecord)
+            .join(SnapshotDeviceRecord)
+            .where(SnapshotDeviceRecord.snapshot_id == snapshot_id)
+        )
+        if device_id:
+            statement = statement.where(SnapshotDeviceRecord.device_id == device_id)
+        return tuple(self.session.scalars(statement).all())
+
+    def get_snapshot_vlans(
+        self,
+        snapshot_id: UUID,
+        device_id: str | None = None,
+    ) -> tuple[SnapshotVLANRecord, ...]:
+        """Return all VLANs in a snapshot, optionally filtered by device."""
+
+        statement = (
+            select(SnapshotVLANRecord)
+            .join(SnapshotDeviceRecord)
+            .where(SnapshotDeviceRecord.snapshot_id == snapshot_id)
+        )
+        if device_id:
+            statement = statement.where(SnapshotDeviceRecord.device_id == device_id)
+        return tuple(self.session.scalars(statement).all())
+
+    def get_snapshot_neighbors(
+        self,
+        snapshot_id: UUID,
+        device_id: str | None = None,
+    ) -> tuple[SnapshotNeighborRecord, ...]:
+        """Return all neighbors in a snapshot, optionally filtered by device."""
+
+        statement = (
+            select(SnapshotNeighborRecord)
+            .join(SnapshotDeviceRecord)
+            .where(SnapshotDeviceRecord.snapshot_id == snapshot_id)
+        )
+        if device_id:
+            statement = statement.where(SnapshotDeviceRecord.device_id == device_id)
+        return tuple(self.session.scalars(statement).all())
+
     def _device_record(self, device: DeviceSnapshot) -> SnapshotDeviceRecord:
         record = SnapshotDeviceRecord(
             id=uuid4(),
@@ -305,6 +384,31 @@ class FindingRepository:
 
         statement = select(FindingRecord).options(selectinload(FindingRecord.evidence))
         return tuple(self.session.scalars(statement).all())
+
+    def list_by_device(self, device_id: str) -> tuple[FindingRecord, ...]:
+        """Return all findings for a specific device."""
+
+        statement = (
+            select(FindingRecord)
+            .options(selectinload(FindingRecord.evidence))
+            .where(FindingRecord.expected_state.op("->>")("device_id") == device_id)
+        )
+        return tuple(self.session.scalars(statement).all())
+
+    def get_latest_comparison(self) -> ComparisonResultRecord | None:
+        """Return the most recent comparison result."""
+
+        statement = (
+            select(ComparisonResultRecord)
+            .options(
+                selectinload(ComparisonResultRecord.findings).selectinload(
+                    FindingRecord.evidence
+                )
+            )
+            .order_by(ComparisonResultRecord.compared_at.desc())
+            .limit(1)
+        )
+        return self.session.scalars(statement).first()
 
 
 def _json_safe(value: object) -> dict[str, Any]:
