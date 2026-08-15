@@ -1,5 +1,6 @@
 export const moduleRoutes = [
   { path: '/dashboard', label: 'Dashboard' },
+  { path: '/network', label: 'Network' },
   { path: '/discovery', label: 'Discovery' },
   { path: '/jobs', label: 'Jobs' },
   { path: '/compliance', label: 'Compliance' },

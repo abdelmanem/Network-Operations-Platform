@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { DiscoveryPage } from './pages/DiscoveryPage'
 import { JobsPage } from './pages/JobsPage'
 import { LoginPage } from './pages/LoginPage'
+import { NetworkPage } from './pages/NetworkPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -45,6 +46,7 @@ function createAppRouter() {
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'network', element: <NetworkPage /> },
         { path: 'discovery', element: <DiscoveryPage /> },
         { path: 'compliance', element: <CompliancePage /> },
         { path: 'jobs', element: <JobsPage /> },

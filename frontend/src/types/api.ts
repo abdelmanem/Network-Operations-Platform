@@ -121,3 +121,122 @@ export interface JobListResponse {
   total: number
   has_next: boolean
 }
+
+// ============================================================================
+// M30.1 Network Operations APIs
+// ============================================================================
+
+// Inventory types
+export interface DeviceSnapshotItem {
+  device_id: string
+  name: string
+  manufacturer: string | null
+  model: string | null
+  serial_number: string | null
+  product_id: string | null
+  management_ip: string | null
+  platform: string | null
+}
+
+export interface InventoryListResponse {
+  items: DeviceSnapshotItem[]
+  page: number
+  page_size: number
+  total: number
+  has_next: boolean
+  source: string
+  snapshot_id: string | null
+  snapshot_captured_at: string | null
+  device_count: number
+}
+
+// Snapshot types
+export interface SnapshotResponse {
+  id: string
+  source: string
+  device_count: number
+  interface_count: number
+  vlan_count: number
+  neighbor_count: number
+  captured_at: string
+}
+
+export interface InterfaceResponse {
+  name: string
+  admin_status: string | null
+  oper_status: string | null
+  description: string | null
+  mac_address: string | null
+  speed_mbps: number | null
+  poe_status: string | null
+}
+
+export interface InterfaceListResponse {
+  snapshot_id: string
+  device_id: string
+  interface_count: number
+  items: InterfaceResponse[]
+}
+
+export interface VlanResponse {
+  vlan_id: number
+  name: string
+  status: string | null
+}
+
+export interface VlanListResponse {
+  snapshot_id: string
+  device_id: string
+  vlan_count: number
+  items: VlanResponse[]
+}
+
+export interface NeighborResponse {
+  neighbor_id: string
+  remote_device_id: string
+  remote_interface: string | null
+  local_interface: string | null
+  protocol: string | null
+}
+
+export interface NeighborListResponse {
+  snapshot_id: string
+  device_id: string
+  neighbor_count: number
+  items: NeighborResponse[]
+}
+
+export interface SnapshotDeviceListResponse {
+  snapshot_id: string
+  source: string
+  device_count: number
+  items: Record<string, unknown>[]
+}
+
+// Comparison types
+export interface ComparisonState {
+  device_id: string
+  name: string | null
+  manufacturer: string | null
+  model: string | null
+  serial_number: string | null
+  product_id: string | null
+  management_ip: string | null
+  platform: string | null
+}
+
+export interface VarianceSummary {
+  field_name: string
+  expected_value: unknown | null
+  observed_value: unknown | null
+  difference_type: string
+}
+
+export interface DeviceComparisonResponse {
+  device_id: string
+  comparison_result_id: string | null
+  compared_at: string | null
+  expected_state: ComparisonState | null
+  observed_state: ComparisonState | null
+  variances: VarianceSummary[]
+}
