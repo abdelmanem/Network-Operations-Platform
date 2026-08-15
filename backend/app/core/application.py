@@ -19,10 +19,14 @@ from starlette.responses import Response
 
 from backend.app.api.router import api_router
 from backend.app.auth.api.router import router as auth_router
-from backend.app.collectors.execution.result import CollectorExecutionResult
-from backend.app.collectors.execution.status import CollectorExecutionStatus
-from backend.app.collectors.runtime.context import CollectorRuntimeContext
-from backend.app.collectors.runtime.job import CollectorJob
+from backend.app.cache.redis import build_cache_backend
+from backend.app.collectors.cisco.factory import build_cisco_inventory_registry
+from backend.app.collectors.cisco.inventory import CiscoInventoryParser
+from backend.app.collectors.runtime.dispatcher import CollectorDispatcher
+from backend.app.collectors.runtime.engine import CollectorRuntimeEngine
+from backend.app.collectors.runtime.executor import CollectorExecutor
+from backend.app.collectors.runtime.metrics import CollectorRuntimeMetrics
+from backend.app.collectors.runtime.scheduler import CollectorScheduler
 from backend.app.comparison.engine import ComparisonEngine
 from backend.app.config.logging import configure_logging
 from backend.app.config.settings import Settings, get_settings
@@ -35,48 +39,108 @@ from backend.app.evaluation.engine import EvaluationEngine
 from backend.app.events.bus import EventBus
 from backend.app.events.dispatcher import EventDispatcher
 from backend.app.events.registry import EventHandlerRegistry
-from backend.app.inventory.dto import InventorySnapshot
+from backend.app.integrations.netbox.client import NetBoxClient
+from backend.app.integrations.netbox.mapper import NetBoxInventoryMapper
+from backend.app.integrations.netbox.service import NetBoxService
+from backend.app.inventory.mapper import InventoryMapper
 from backend.app.jobs.manager import JobManager
 from backend.app.jobs.repository import InMemoryJobRepository
+from backend.app.normalization.engine import NormalizationEngine
 from backend.app.notifications.service import NotificationService
 from backend.app.orchestration.coordinator import DiscoveryCoordinator
 from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.orchestration.workflow import WorkflowEngine
+from backend.app.parsers.pipeline import ParserPipeline
+from backend.app.parsers.registry import ParserRegistry
 from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
 from backend.app.scheduler.registry import WorkerRegistry
+from backend.app.services.base import ServiceContext
+from backend.app.services.inventory import InventoryService
+from backend.app.snapshot.models import InventorySnapshotModel
+from backend.app.transports.http.httpx import HttpxTransport
+from backend.app.transports.manager import TransportManager
+from backend.app.transports.snmp.pysnmp import PySnmpTransport
+from backend.app.transports.ssh.netmiko import NetmikoSSHTransport
+from backend.app.transports.ssh.paramiko import ParamikoSSHTransport
 
 
-class _PlaceholderInventoryService:
-    """Lightweight inventory service used for orchestration wiring."""
+class _InMemorySnapshotRepository:
+    """Minimal async snapshot repository for the collector runtime."""
 
-    async def synchronize(self, *, force_refresh: bool = False) -> InventorySnapshot:
-        return InventorySnapshot(devices=())
+    def __init__(self) -> None:
+        self._snapshots: list[InventorySnapshotModel] = []
 
+    async def save(self, snapshot: InventorySnapshotModel) -> None:
+        self._snapshots.append(snapshot)
 
-class _PlaceholderCollectorRuntime:
-    """Minimal collector runtime adapter for orchestration wiring."""
-
-    async def start(self) -> None:
+    async def get(self, snapshot_id: object) -> InventorySnapshotModel | None:
+        for snapshot in self._snapshots:
+            if snapshot.snapshot_id == snapshot_id:
+                return snapshot
         return None
 
-    async def stop(self) -> None:
-        return None
+    async def list(self) -> tuple[InventorySnapshotModel, ...]:
+        return tuple(self._snapshots)
 
-    async def submit(
-        self,
-        context: CollectorRuntimeContext,
-        *,
-        priority: int = 0,
-    ) -> CollectorJob:
-        return CollectorJob(context=context, priority=priority)
+    async def delete(self, snapshot_id: object) -> None:
+        self._snapshots = [
+            snapshot for snapshot in self._snapshots if snapshot.snapshot_id != snapshot_id
+        ]
 
-    async def run_job(self, job: CollectorJob) -> CollectorExecutionResult:
-        return CollectorExecutionResult(
-            job_id=job.id,
-            collector_name="placeholder",
-            target=job.context.target,
-            status=CollectorExecutionStatus.SUCCEEDED,
-        )
+    async def clear(self) -> None:
+        self._snapshots.clear()
+
+
+def _build_runtime_services(settings: Settings) -> tuple[InventoryService, CollectorRuntimeEngine]:
+    """Build the real NetBox inventory and collector runtime graph."""
+
+    netbox_base_url = settings.netbox_url or "http://localhost:8001"
+    settings.netbox_base_url = netbox_base_url
+    netbox_client = NetBoxClient.from_settings(
+        settings,
+        response_cache=None,
+    )
+    netbox_service = NetBoxService(client=netbox_client)
+    inventory_service = InventoryService(
+        context=ServiceContext(settings=settings),
+        netbox_service=netbox_service,
+        inventory_mapper=InventoryMapper(netbox_mapper=NetBoxInventoryMapper()),
+        cache=build_cache_backend(settings.redis_url),
+    )
+
+    transport_manager = TransportManager()
+    for transport in (
+        NetmikoSSHTransport(),
+        ParamikoSSHTransport(),
+        PySnmpTransport(),
+        HttpxTransport(),
+    ):
+        transport_manager.register(transport)
+
+    parser_registry = ParserRegistry()
+    parser_registry.register(CiscoInventoryParser())
+    collector_registry = build_cisco_inventory_registry(transport_manager)
+    collector_executor = CollectorExecutor(
+        collector_registry=collector_registry,
+        transport_manager=transport_manager,
+        parser_pipeline=ParserPipeline(registry=parser_registry),
+        normalization_engine=NormalizationEngine(),
+        snapshot_repository=_InMemorySnapshotRepository(),
+        metrics=CollectorRuntimeMetrics(),
+    )
+    runtime_metrics = collector_executor.metrics
+    scheduler = CollectorScheduler()
+    dispatcher = CollectorDispatcher(
+        executor=collector_executor,
+        scheduler=scheduler,
+        metrics=runtime_metrics,
+    )
+    collector_runtime = CollectorRuntimeEngine(
+        scheduler=scheduler,
+        dispatcher=dispatcher,
+        metrics=runtime_metrics,
+    )
+    return inventory_service, collector_runtime
 
 
 @dataclass(slots=True)
@@ -116,9 +180,10 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     event_dispatcher = EventDispatcher(event_registry)
     event_bus = EventBus(registry=event_registry)
     notification_service = NotificationService(adapters={}, mappings=[])
+    inventory_service, collector_runtime = _build_runtime_services(app_settings)
     workflow = WorkflowEngine(
-        inventory_service=_PlaceholderInventoryService(),
-        discovery_coordinator=DiscoveryCoordinator(_PlaceholderCollectorRuntime()),
+        inventory_service=inventory_service,
+        discovery_coordinator=DiscoveryCoordinator(collector_runtime),
         comparison_engine=ComparisonEngine(),
         evaluation_engine=EvaluationEngine(),
         unit_of_work_factory=lambda: PersistenceUnitOfWork(SessionLocal()),

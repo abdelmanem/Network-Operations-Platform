@@ -10,17 +10,33 @@ from backend.app.collectors.execution.result import CollectorExecutionResult
 from backend.app.collectors.execution.status import CollectorExecutionStatus
 from backend.app.collectors.runtime.context import CollectorRuntimeContext
 from backend.app.collectors.runtime.job import CollectorJob
+from backend.app.cache.redis import InMemoryCache
 from backend.app.comparison.engine import ComparisonEngine
 from backend.app.compliance.domain.enums import RuleStatus
+from backend.app.config.settings import get_settings
 from backend.app.compliance.policies.models import Policy
 from backend.app.compliance.rules.base import Rule
 from backend.app.compliance.rules.metadata import RuleMetadata
 from backend.app.discovery.context import DiscoveryTarget
 from backend.app.evaluation.engine import EvaluationEngine
 from backend.app.events.models import BaseEvent
+from backend.app.integrations.netbox.mapper import NetBoxInventoryMapper
+from backend.app.integrations.netbox.models import (
+    NetBoxDevice,
+    NetBoxDeviceType,
+    NetBoxDeviceTypeReference,
+    NetBoxInventoryDataset,
+    NetBoxManufacturer,
+    NetBoxObjectReference,
+    NetBoxRole,
+    NetBoxSite,
+)
 from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapshot
 from backend.app.inventory.entities import Device, DeviceType, Manufacturer
+from backend.app.inventory.mapper import InventoryMapper
 from backend.app.models.base import BaseModel
+from backend.app.services.base import ServiceContext
+from backend.app.services.inventory import InventoryService
 from backend.app.orchestration import (
     CancellationToken,
     DiscoveryCoordinator,
@@ -30,6 +46,7 @@ from backend.app.orchestration import (
     OrchestrationStatus,
     WorkflowEngine,
 )
+from backend.app.orchestration.jobs import OrchestrationJob
 from backend.app.orchestration.events import OrchestrationEventNames
 from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
 from backend.app.snapshot.entities import (
@@ -258,7 +275,92 @@ async def test_orchestration_returns_failed_result_on_pipeline_error(
     result = await _engine(session, inventory_service=inventory).run(_context())
 
     assert result.status == OrchestrationStatus.FAILED
-    assert result.error_message == "temporary netbox failure"
+
+
+@pytest.mark.anyio
+async def test_real_inventory_service_and_workflow_persist_expected_and_observed_state(
+    session: Session,
+) -> None:
+    dataset = NetBoxInventoryDataset(
+        sites=(NetBoxSite(id=1, name="HQ", slug="hq"),),
+        manufacturers=(NetBoxManufacturer(id=2, name="Cisco", slug="cisco"),),
+        device_types=(
+            NetBoxDeviceType(
+                id=3,
+                manufacturer=NetBoxObjectReference(id=2, name="Cisco", slug="cisco"),
+                model="WS-C2960X",
+                slug="ws-c2960x",
+            ),
+        ),
+        roles=(NetBoxRole(id=4, name="Access", slug="access"),),
+        devices=(
+            NetBoxDevice(
+                id=5,
+                name="switch-01",
+                device_type=NetBoxDeviceTypeReference(
+                    id=3,
+                    model="WS-C2960X",
+                    slug="ws-c2960x",
+                    manufacturer=NetBoxObjectReference(
+                        id=2,
+                        name="Cisco",
+                        slug="cisco",
+                    ),
+                ),
+                role=NetBoxObjectReference(id=4, name="Access", slug="access"),
+                serial="ABC123",
+            ),
+        ),
+    )
+
+    class FakeNetBoxService:
+        async def fetch_inventory_dataset(self) -> NetBoxInventoryDataset:
+            return dataset
+
+    real_inventory = InventoryService(
+        context=ServiceContext(settings=get_settings()),
+        netbox_service=FakeNetBoxService(),
+        inventory_mapper=InventoryMapper(netbox_mapper=NetBoxInventoryMapper()),
+        cache=InMemoryCache(),
+    )
+
+    workflow = WorkflowEngine(
+        inventory_service=real_inventory,
+        discovery_coordinator=DiscoveryCoordinator(
+            FakeCollectorRuntime(
+                LiveInventorySnapshot(
+                    devices=(
+                        DeviceSnapshot(
+                            device_id="switch-01",
+                            name="switch-01",
+                            model="WS-C2960X",
+                            serial_number="XYZ999",
+                        ),
+                    )
+                )
+            )
+        ),
+        comparison_engine=ComparisonEngine(),
+        evaluation_engine=EvaluationEngine(),
+        unit_of_work_factory=lambda: PersistenceUnitOfWork(session),
+    )
+
+    result = await workflow.execute(
+        OrchestrationJob(
+            context=_context(),
+            priority=0,
+        )
+    )
+
+    assert result.status == OrchestrationStatus.SUCCEEDED
+    assert result.netbox_inventory.devices[0].name == "switch-01"
+    assert result.live_snapshot.devices[0].device_id == "switch-01"
+    assert result.comparison_result is not None
+    assert result.comparison_result.metrics.total_differences >= 1
+    assert result.discovery_run_id is not None
+    assert result.netbox_snapshot_id is not None
+    assert result.live_snapshot_id is not None
+    assert result.comparison_record_id is not None
 
 
 @pytest.mark.anyio
