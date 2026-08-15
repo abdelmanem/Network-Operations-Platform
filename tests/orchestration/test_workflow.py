@@ -374,3 +374,211 @@ async def test_orchestration_supports_cancellation(session: Session) -> None:
 
     assert result.status == OrchestrationStatus.CANCELLED
     assert result.error_message == "user requested cancellation"
+
+
+@pytest.mark.anyio
+async def test_variance_detection_device_missing_from_live_network(
+    session: Session,
+) -> None:
+    """Test Case A: Device exists in NetBox but is missing from live discovery."""
+    netbox_snapshot = NetBoxInventorySnapshot(
+        devices=(
+            Device(
+                name="switch-01",
+                device_type=DeviceType(
+                    manufacturer=Manufacturer(name="Cisco", slug="cisco"),
+                    model="WS-C2960X",
+                    slug="ws-c2960x",
+                ),
+                serial="ABC123",
+            ),
+        )
+    )
+    live_snapshot = LiveInventorySnapshot(devices=())
+
+    inventory = FakeInventoryService(netbox_snapshot)
+    engine = _engine(
+        session,
+        inventory_service=inventory,
+    )
+    runtime = FakeCollectorRuntime(live_snapshot)
+    engine.workflow.discovery_coordinator.collector_runtime = runtime
+
+    result = await engine.run(_context())
+
+    assert result.status == OrchestrationStatus.SUCCEEDED
+    assert result.comparison_result is not None
+    differences = result.comparison_result.differences
+    missing_device_diffs = [
+        d for d in differences if d.difference_type.value == "missing"
+    ]
+    assert len(missing_device_diffs) >= 1
+    assert any(d.subject_type == "device" for d in missing_device_diffs)
+    assert result.comparison_record_id is not None
+
+
+@pytest.mark.anyio
+async def test_variance_detection_device_unexpected_in_live_network(
+    session: Session,
+) -> None:
+    """Test Case B: Device exists in live discovery but not in NetBox."""
+    netbox_snapshot = NetBoxInventorySnapshot(devices=())
+    live_snapshot = LiveInventorySnapshot(
+        devices=(
+            DeviceSnapshot(
+                device_id="rogue-switch",
+                name="rogue-switch",
+                model="WS-C2960X",
+                serial_number="XYZ999",
+            ),
+        )
+    )
+
+    inventory = FakeInventoryService(netbox_snapshot)
+    engine = _engine(
+        session,
+        inventory_service=inventory,
+    )
+    runtime = FakeCollectorRuntime(live_snapshot)
+    engine.workflow.discovery_coordinator.collector_runtime = runtime
+
+    result = await engine.run(_context())
+
+    assert result.status == OrchestrationStatus.SUCCEEDED
+    assert result.comparison_result is not None
+    differences = result.comparison_result.differences
+    unexpected_diffs = [
+        d
+        for d in differences
+        if d.difference_type.value == "unexpected" and d.subject_type == "device"
+    ]
+    assert len(unexpected_diffs) >= 1
+    assert result.comparison_record_id is not None
+
+
+@pytest.mark.anyio
+async def test_variance_detection_device_attribute_mismatch(
+    session: Session,
+) -> None:
+    """Test Case C: Device exists in both but attributes differ (serial, model, IP)."""
+    netbox_snapshot = NetBoxInventorySnapshot(
+        devices=(
+            Device(
+                name="switch-01",
+                device_type=DeviceType(
+                    manufacturer=Manufacturer(name="Cisco", slug="cisco"),
+                    model="WS-C2960X",
+                    slug="ws-c2960x",
+                ),
+                serial="ABC123",
+                primary_ip="10.0.0.1",
+            ),
+        )
+    )
+    live_snapshot = LiveInventorySnapshot(
+        devices=(
+            DeviceSnapshot(
+                device_id="switch-01",
+                name="switch-01",
+                model="WS-C2960Y",
+                serial_number="XYZ999",
+                management_ip="10.0.0.2",
+            ),
+        )
+    )
+
+    inventory = FakeInventoryService(netbox_snapshot)
+    engine = _engine(
+        session,
+        inventory_service=inventory,
+    )
+    runtime = FakeCollectorRuntime(live_snapshot)
+    engine.workflow.discovery_coordinator.collector_runtime = runtime
+
+    result = await engine.run(_context())
+
+    assert result.status == OrchestrationStatus.SUCCEEDED
+    assert result.comparison_result is not None
+    differences = result.comparison_result.differences
+    modified_diffs = [
+        d for d in differences if d.difference_type.value == "modified"
+    ]
+    assert len(modified_diffs) >= 1
+    expected_fields = {"serial", "model", "primary_ip"}
+    actual_fields = {d.field_name for d in modified_diffs if d.field_name}
+    assert actual_fields & expected_fields, (
+        f"Expected to find mismatch on {expected_fields}, "
+        f"but found {actual_fields}"
+    )
+    assert result.comparison_record_id is not None
+
+
+@pytest.mark.anyio
+async def test_variance_persistence_enables_historical_comparison(
+    session: Session,
+) -> None:
+    """Test Case D: Verify historical discovery and comparison persistence."""
+    manufacturer = Manufacturer(name="Cisco", slug="cisco")
+    device_type = DeviceType(
+        manufacturer=manufacturer,
+        model="WS-C2960X",
+        slug="ws-c2960x",
+    )
+
+    netbox_snapshot = NetBoxInventorySnapshot(
+        devices=(
+            Device(
+                name="switch-01",
+                device_type=device_type,
+                serial="ABC123",
+            ),
+        )
+    )
+    live_snapshot = LiveInventorySnapshot(
+        devices=(
+            DeviceSnapshot(
+                device_id="switch-01",
+                name="switch-01",
+                model="WS-C2960X",
+                serial_number="ABC123",
+            ),
+        )
+    )
+
+    inventory = FakeInventoryService(netbox_snapshot)
+    engine = _engine(session, inventory_service=inventory)
+    runtime = FakeCollectorRuntime(live_snapshot)
+    engine.workflow.discovery_coordinator.collector_runtime = runtime
+
+    result1 = await engine.run(_context())
+    assert result1.status == OrchestrationStatus.SUCCEEDED
+    run_id_1 = result1.discovery_run_id
+    comparison_id_1 = result1.comparison_record_id
+
+    from backend.app.persistence.repositories import (
+        HistoryRepository,
+        FindingRepository,
+    )
+
+    history_repo = HistoryRepository(session)
+    runs = history_repo.list_discovery_runs()
+    assert len(runs) >= 1
+    assert any(run.id == run_id_1 for run in runs)
+
+    finding_repo = FindingRepository(session)
+    result_record = finding_repo.get_comparison_result(comparison_id_1)
+    assert result_record is not None
+    assert result_record.expected_snapshot_id is not None
+    assert result_record.observed_snapshot_id is not None
+
+    result2 = await engine.run(_context())
+    assert result2.status == OrchestrationStatus.SUCCEEDED
+    run_id_2 = result2.discovery_run_id
+    comparison_id_2 = result2.comparison_record_id
+
+    assert run_id_1 != run_id_2
+    assert comparison_id_1 != comparison_id_2
+
+    runs = history_repo.list_discovery_runs()
+    assert len(runs) >= 2
+    assert any(run.id == run_id_2 for run in runs)
