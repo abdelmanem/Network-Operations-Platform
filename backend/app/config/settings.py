@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     netbox_page_size: int = 100
     netbox_retry_max_attempts: int = 4
     netbox_retry_base_delay_seconds: float = 0.5
+    netbox_ca_cert: str = Field(
+        default="",
+        validation_alias="NETBOX_CA_CERT",
+        description="Path to CA certificate file for NetBox TLS verification. If not set, uses system default trust store.",
+    )
 
     @property
     def netbox_url(self) -> str:

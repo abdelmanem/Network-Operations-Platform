@@ -51,6 +51,7 @@ class NetBoxSettings(Protocol):
     netbox_retry_base_delay_seconds: float
     netbox_page_size: int
     netbox_expected_version: str | None
+    netbox_ca_cert: str
 
 
 @dataclass(slots=True)
@@ -65,6 +66,7 @@ class NetBoxClient:
     expected_version: str | None = None
     response_cache: NetBoxResponseCache | None = None
     transport: httpx.AsyncBaseTransport | None = None
+    ca_cert: str | None = None
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("backend.app.integrations.netbox")
     )
@@ -79,6 +81,12 @@ class NetBoxClient:
         if self.authentication is not None:
             headers.update(self.authentication.build_headers())
 
+        # Determine TLS verification strategy
+        # If ca_cert is provided, use it; otherwise use system default trust store
+        verify: bool | str = True
+        if self.ca_cert:
+            verify = self.ca_cert
+
         self._client = httpx.AsyncClient(
             base_url=normalized_base_url,
             headers=headers,
@@ -86,6 +94,7 @@ class NetBoxClient:
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             transport=self.transport,
             follow_redirects=True,
+            verify=verify,
         )
 
     @classmethod
@@ -101,6 +110,8 @@ class NetBoxClient:
         authentication = build_authentication(
             token=getattr(settings, "netbox_token", None)
         )
+        ca_cert = getattr(settings, "netbox_ca_cert", "") or None
+        
         return cls(
             base_url=getattr(settings, "netbox_base_url", ""),
             authentication=authentication,
@@ -115,6 +126,7 @@ class NetBoxClient:
             expected_version=getattr(settings, "netbox_expected_version", None),
             response_cache=response_cache,
             transport=transport,
+            ca_cert=ca_cert,
         )
 
     async def aclose(self) -> None:
