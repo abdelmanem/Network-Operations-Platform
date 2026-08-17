@@ -29,3 +29,4 @@ class UserResponse(BaseModel):
     username: str
     email: str
     roles: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)

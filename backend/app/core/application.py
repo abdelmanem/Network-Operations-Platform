@@ -94,8 +94,12 @@ class _InMemorySnapshotRepository:
 def _build_runtime_services(settings: Settings) -> tuple[InventoryService, CollectorRuntimeEngine]:
     """Build the real NetBox inventory and collector runtime graph."""
 
-    netbox_base_url = settings.netbox_url or "http://localhost:8001"
-    settings.netbox_base_url = netbox_base_url
+    if not settings.netbox_url:
+        raise ValueError("NETBOX_URL configuration is missing or empty. A valid URL is required.")
+    if not settings.netbox_expected_version:
+        raise ValueError("NETBOX_EXPECTED_VERSION configuration is missing or empty. A valid version is required.")
+
+    settings.netbox_base_url = settings.netbox_url
     netbox_client = NetBoxClient.from_settings(
         settings,
         response_cache=None,
@@ -214,6 +218,23 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         async with lifecycle_context(container.lifecycle):
+            from datetime import datetime, UTC
+            from backend.app.database.session import SessionLocal
+            from backend.app.persistence.models import NetBoxSyncJobRecord
+            session = SessionLocal()
+            try:
+                stuck_jobs = session.query(NetBoxSyncJobRecord).filter(
+                    NetBoxSyncJobRecord.status.in_(["queued", "running"])
+                ).all()
+                for job in stuck_jobs:
+                    job.status = "failed"
+                    job.finished_at = datetime.now(UTC)
+                    job.error_message = "System restarted during synchronization."
+                session.commit()
+            except Exception:
+                session.rollback()
+            finally:
+                session.close()
             yield
 
     app = FastAPI(
@@ -284,13 +305,29 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         response.headers.setdefault("Cache-Control", "no-store")
         return response
 
+    from backend.app.api.v1.exceptions import NetBoxIntegrationException
+
+    @app.exception_handler(NetBoxIntegrationException)
+    async def handle_netbox_integration_error(
+        request: Request,
+        exc: NetBoxIntegrationException,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "code": exc.code,
+                "message": exc.message,
+                "details": exc.details,
+            },
+        )
+
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": exc.errors(), "error": "validation_error"},
         )
 
@@ -304,7 +341,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
             status.HTTP_403_FORBIDDEN: "forbidden",
             status.HTTP_404_NOT_FOUND: "not_found",
             status.HTTP_409_CONFLICT: "conflict",
-            status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
+            status.HTTP_422_UNPROCESSABLE_CONTENT: "validation_error",
         }
         error_code = status_map.get(exc.status_code, "http_error")
         return JSONResponse(

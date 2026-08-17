@@ -319,6 +319,24 @@ class EvidenceRecord(ImmutableHistoryMixin, BaseModel):
     finding: Mapped[FindingRecord] = relationship(back_populates="evidence")
 
 
+class NetBoxSyncJobRecord(ImmutableHistoryMixin, BaseModel):
+    """Durable record of a NetBox synchronization job."""
+
+    __tablename__ = "netbox_sync_jobs"
+
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        nullable=False,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 _IMMUTABLE_MODELS = (
     DiscoveryRunRecord,
     SnapshotRecord,

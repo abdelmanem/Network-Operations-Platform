@@ -41,6 +41,7 @@ def register_user(
         username=user.username,
         email=user.email,
         roles=[role.name for role in user.roles],
+        permissions=list({p.name for r in user.roles for p in r.permissions}),
     )
 
 
@@ -69,4 +70,5 @@ def me(user: Annotated[User, Depends(get_current_user)]) -> UserResponse:
         username=user.username,
         email=user.email,
         roles=[role.name for role in user.roles],
+        permissions=list({p.name for r in user.roles for p in r.permissions}),
     )

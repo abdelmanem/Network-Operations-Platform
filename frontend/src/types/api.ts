@@ -13,6 +13,7 @@ export interface UserResponse {
   username: string
   email: string
   roles: string[]
+  permissions?: string[]
 }
 
 export interface DashboardKpiSummaryResponse {
@@ -239,4 +240,47 @@ export interface DeviceComparisonResponse {
   expected_state: ComparisonState | null
   observed_state: ComparisonState | null
   variances: VarianceSummary[]
+}
+
+// NetBox Integration types
+export interface InventoryCounts {
+  devices: number
+  interfaces: number
+  ip_addresses: number
+  vlans: number
+}
+
+export interface NetBoxIntegrationStatusResponse {
+  configured: boolean
+  connected: boolean
+  tls_verified: boolean
+  authenticated: boolean
+  version: string | null
+  hostname: string | null
+  last_successful_sync: string | null
+  current_sync_status: 'idle' | 'queued' | 'running' | 'succeeded' | 'failed'
+  sync_started_at: string | null
+  sync_completed_at: string | null
+  sync_error: string | null
+  inventory_counts: InventoryCounts
+}
+
+export interface NetBoxTestConnectionResponse {
+  connected: boolean
+  tls_verified: boolean
+  authenticated: boolean
+  version: string | null
+  hostname: string | null
+  message: string
+}
+
+export interface NetBoxSyncResponse {
+  job_id: string
+  status: string
+}
+
+export interface NetBoxErrorContract {
+  code: string
+  message: string
+  details: unknown | null
 }

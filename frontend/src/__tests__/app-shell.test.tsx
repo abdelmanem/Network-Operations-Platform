@@ -161,7 +161,7 @@ describe('frontend foundation shell', () => {
 
     expect(await screen.findByRole('heading', { name: /jobs/i })).toBeInTheDocument()
     expect(screen.getByRole('navigation')).toBeInTheDocument()
-    expect(screen.getByText(/no jobs have been created yet/i)).toBeInTheDocument()
+    expect(await screen.findByText(/no jobs have been created yet/i)).toBeInTheDocument()
   })
 
   it('shows a dashboard error state when the backend contract is unavailable', async () => {

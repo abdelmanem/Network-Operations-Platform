@@ -25,6 +25,7 @@ from backend.app.persistence.models import (
     SnapshotRecord,
     SnapshotSource,
     SnapshotVLANRecord,
+    NetBoxSyncJobRecord,
 )
 from backend.app.snapshot.entities import (
     DeviceSnapshot,
@@ -125,6 +126,11 @@ class SnapshotRepository:
     ) -> SnapshotRecord:
         """Persist one immutable canonical NetBox inventory snapshot."""
 
+        interfaces_by_device = {}
+        for interface in getattr(snapshot, "interfaces", []):
+            if getattr(interface, "device_name", None):
+                interfaces_by_device.setdefault(interface.device_name, []).append(interface)
+
         record = SnapshotRecord(
             id=uuid4(),
             source=SnapshotSource.NETBOX.value,
@@ -133,8 +139,59 @@ class SnapshotRepository:
             schema_version="netbox-canonical-v1",
             payload=self._json_safe(snapshot.model_dump(mode="json")),
         )
+        record.devices = [
+            self._netbox_device_record(device, interfaces_by_device.get(device.name, [])) for device in snapshot.devices
+        ]
         self.session.add(record)
         return record
+
+    def _netbox_device_record(self, device: object, interfaces: list[object]) -> SnapshotDeviceRecord:
+        record = SnapshotDeviceRecord(
+            id=uuid4(),
+            device_id=device.name,
+            name=device.name,
+            manufacturer=device.device_type.manufacturer.name if device.device_type and device.device_type.manufacturer else None,
+            model=device.device_type.model if device.device_type else None,
+            serial_number=device.serial,
+            product_id=None,
+            management_ip=device.primary_ip,
+            platform=device.platform.name if device.platform else None,
+            payload=self._json_safe(device.model_dump(mode="json")),
+        )
+        record.interfaces = [
+            SnapshotInterfaceRecord(
+                id=uuid4(),
+                name=interface.name,
+                admin_status="up" if getattr(interface, "enabled", True) else "down",
+                oper_status=None,
+                description=getattr(interface, "description", None),
+                mac_address=getattr(interface, "mac_address", None),
+                speed_mbps=None,
+                poe_status=None,
+            )
+            for interface in interfaces
+        ]
+        return record
+
+    def create_sync_job(self, job_id: UUID) -> NetBoxSyncJobRecord:
+        """Create a new NetBox synchronization job record."""
+        job = NetBoxSyncJobRecord(
+            id=job_id,
+            status="queued",
+        )
+        self.session.add(job)
+        return job
+
+    def get_sync_job(self, job_id: UUID) -> NetBoxSyncJobRecord | None:
+        """Retrieve a specific NetBox synchronization job."""
+        return self.session.get(NetBoxSyncJobRecord, job_id)
+
+    def get_latest_sync_job(self) -> NetBoxSyncJobRecord | None:
+        """Retrieve the most recent NetBox synchronization job."""
+        statement = select(NetBoxSyncJobRecord).order_by(
+            NetBoxSyncJobRecord.created_at.desc()
+        ).limit(1)
+        return self.session.scalars(statement).first()
 
     def get(self, identity: UUID) -> SnapshotRecord | None:
         """Return a snapshot with child records loaded."""

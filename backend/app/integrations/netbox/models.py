@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from typing import Any
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 class NetBoxModel(BaseModel):
@@ -36,6 +37,20 @@ class NetBoxIPAddressReference(NetBoxModel):
     address: str
     family: int | None = None
     display: str | None = None
+
+    @field_validator("family", mode="before")
+    @classmethod
+    def _validate_family(cls, v: Any) -> int | None:
+        if isinstance(v, dict):
+            return v.get("value")
+        if hasattr(v, "value"):
+            return getattr(v, "value")
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
 
 
 class NetBoxDeviceTypeReference(NetBoxModel):
@@ -163,6 +178,17 @@ class NetBoxInterface(NetBoxModel):
     mac_address: str | None = None
     description: str | None = None
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _validate_type(cls, v: Any) -> str | None:
+        if isinstance(v, dict):
+            return v.get("value")
+        if hasattr(v, "value"):
+            return getattr(v, "value")
+        if v is None:
+            return None
+        return str(v)
+
 
 class NetBoxIPAddress(NetBoxModel):
     """Validated IP address payload from NetBox."""
@@ -174,6 +200,20 @@ class NetBoxIPAddress(NetBoxModel):
     dns_name: str | None = None
     assigned_object_type: str | None = None
     assigned_object: NetBoxObjectReference | None = None
+
+    @field_validator("family", mode="before")
+    @classmethod
+    def _validate_family(cls, v: Any) -> int | None:
+        if isinstance(v, dict):
+            return v.get("value")
+        if hasattr(v, "value"):
+            return getattr(v, "value")
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
 
 
 class NetBoxVLAN(NetBoxModel):

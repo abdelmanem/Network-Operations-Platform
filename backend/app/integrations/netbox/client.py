@@ -111,6 +111,12 @@ class NetBoxClient:
             token=getattr(settings, "netbox_token", None)
         )
         ca_cert = getattr(settings, "netbox_ca_cert", "") or None
+        if ca_cert:
+            from pathlib import Path
+            cert_path = Path(ca_cert)
+            if not cert_path.is_absolute():
+                project_root = Path(__file__).resolve().parents[4]
+                ca_cert = str(project_root / cert_path)
         
         return cls(
             base_url=getattr(settings, "netbox_base_url", ""),
@@ -266,7 +272,7 @@ class NetBoxClient:
         self,
         endpoint: NetBoxEndpoint | str,
         params: dict[str, object] | None = None,
-    ) -> NetBoxCollectionResponse[NetBoxModel]:
+    ) -> NetBoxCollectionResponse[Any]:
         """Return a validated NetBox collection page."""
 
         payload = await self.request_json("GET", endpoint, params=params)
@@ -274,7 +280,7 @@ class NetBoxClient:
             payload,
             context=f"{endpoint} collection",
         )
-        return NetBoxCollectionResponse[NetBoxModel].model_validate(validated_payload)
+        return NetBoxCollectionResponse[Any].model_validate(validated_payload)
 
     async def list_collection(
         self,

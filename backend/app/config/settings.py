@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,7 +9,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[3] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     )
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 2_592_000
-    netbox_expected_version: str = "4.6.7"
+    netbox_expected_version: str = Field(default="", validation_alias="NETBOX_EXPECTED_VERSION")
     netbox_timeout_seconds: float = 10.0
     netbox_page_size: int = 100
     netbox_retry_max_attempts: int = 4

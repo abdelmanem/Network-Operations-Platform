@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 
+from typing import Any
+
 from backend.app.integrations.netbox.endpoints import NetBoxEndpoint
 from backend.app.integrations.netbox.models import (
     NetBoxCollectionResponse,
@@ -13,7 +15,7 @@ from backend.app.integrations.netbox.models import (
 
 PageFetcher = Callable[
     [NetBoxEndpoint | str, dict[str, object] | None],
-    Awaitable[NetBoxCollectionResponse[NetBoxModel]],
+    Awaitable[NetBoxCollectionResponse[Any]],
 ]
 ProgressCallback = Callable[[int, int | None], None]
 
@@ -43,7 +45,7 @@ class NetBoxPaginator:
         endpoint: NetBoxEndpoint | str,
         *,
         params: dict[str, object] | None = None,
-    ) -> AsyncIterator[NetBoxCollectionResponse[NetBoxModel]]:
+    ) -> AsyncIterator[NetBoxCollectionResponse[Any]]:
         """Iterate over paginated responses."""
 
         request_params: dict[str, object] | None = dict(params or {})
