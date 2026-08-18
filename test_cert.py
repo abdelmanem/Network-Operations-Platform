@@ -2,11 +2,12 @@ import os
 from pathlib import Path
 
 import httpx
-
 from backend.app.config.settings import get_settings
 
 settings = get_settings()
-cert_path = Path(settings.netbox_ca_cert).expanduser() if settings.netbox_ca_cert else None
+cert_path = (
+    Path(settings.netbox_ca_cert).expanduser() if settings.netbox_ca_cert else None
+)
 print("[TEST 1] Testing HTTPS connection with certificate trust")
 if cert_path is not None:
     print(f"Certificate path: {cert_path.resolve()}")
@@ -18,7 +19,10 @@ token = settings.netbox_token
 headers = {"Authorization": f"Bearer {token}"}
 
 if not token:
-    raise RuntimeError("NETBOX_TOKEN is not configured; configure the project .env before running this script.")
+    raise RuntimeError(
+        "NETBOX_TOKEN is not configured; "
+        "configure the project .env before running this script."
+    )
 
 try:
     response = httpx.get(

@@ -220,9 +220,11 @@ def get_status(
         tls_verified=tls_verified,
         authenticated=configured_token,
         version=settings.netbox_expected_version,
-        hostname=settings.netbox_base_url.split("//")[-1].split(":")[0]
-        if configured
-        else None,
+        hostname=(
+            settings.netbox_base_url.split("//")[-1].split(":")[0]
+            if configured
+            else None
+        ),
         last_successful_sync=last_successful_sync,
         current_sync_status=current_sync_status,
         sync_started_at=sync_started_at,

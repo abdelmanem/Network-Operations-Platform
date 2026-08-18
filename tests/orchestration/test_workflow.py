@@ -504,9 +504,9 @@ async def test_variance_detection_device_attribute_mismatch(
     assert len(modified_diffs) >= 1
     expected_fields = {"serial", "model", "primary_ip"}
     actual_fields = {d.field_name for d in modified_diffs if d.field_name}
-    assert actual_fields & expected_fields, (
-        f"Expected to find mismatch on {expected_fields}, but found {actual_fields}"
-    )
+    assert (
+        actual_fields & expected_fields
+    ), f"Expected to find mismatch on {expected_fields}, but found {actual_fields}"
     assert result.comparison_record_id is not None
 
 
