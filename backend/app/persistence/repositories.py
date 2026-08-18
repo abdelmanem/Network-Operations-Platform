@@ -220,7 +220,7 @@ class SnapshotRepository:
     def get_latest(self, source: str) -> SnapshotRecord | None:
         """Return the most recent snapshot for a given source ('netbox' or 'live')."""
 
-        source_value = source.upper() if source else ""
+        source_value = source.lower() if source else ""
         statement = (
             self._with_children(select(SnapshotRecord))
             .where(SnapshotRecord.source == source_value)
