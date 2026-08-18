@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-
 from typing import Any
 
 from backend.app.integrations.netbox.endpoints import NetBoxEndpoint

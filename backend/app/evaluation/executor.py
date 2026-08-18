@@ -100,20 +100,24 @@ class RuleExecutor:
         expected = expected_state.get("expected", difference.expected)
         observed = difference.observed
         handlers: dict[RuleType, Callable[[object | None, object | None], bool]] = {
-            RuleType.EQUALS: lambda exp, obs: self._normalize(exp)
-            == self._normalize(obs),
-            RuleType.NOT_EQUALS: lambda exp, obs: self._normalize(exp)
-            != self._normalize(obs),
-            RuleType.EXISTS: lambda exp, obs: obs is not None
-            and str(obs).strip() != "",
+            RuleType.EQUALS: lambda exp, obs: (
+                self._normalize(exp) == self._normalize(obs)
+            ),
+            RuleType.NOT_EQUALS: lambda exp, obs: (
+                self._normalize(exp) != self._normalize(obs)
+            ),
+            RuleType.EXISTS: lambda exp, obs: (
+                obs is not None and str(obs).strip() != ""
+            ),
             RuleType.MISSING: lambda exp, obs: obs is None or str(obs).strip() == "",
             RuleType.REGEX: self._regex,
             RuleType.CONTAINS: lambda exp, obs: str(exp) in str(obs),
             RuleType.GREATER_THAN: self._compare(operator.gt),
             RuleType.LESS_THAN: self._compare(operator.lt),
             RuleType.VERSION_COMPARE: self._version_compare,
-            RuleType.BOOLEAN_COMPARE: lambda exp, obs: self._bool(exp)
-            == self._bool(obs),
+            RuleType.BOOLEAN_COMPARE: lambda exp, obs: (
+                self._bool(exp) == self._bool(obs)
+            ),
         }
         try:
             return handlers[rule_type](expected, observed)

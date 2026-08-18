@@ -1,15 +1,12 @@
-from typing import Any
-
-
-class NetBoxIntegrationException(Exception):
-    """Exception raised for NetBox integration errors that translates to safe API contracts."""
+class NetBoxIntegrationError(Exception):
+    """Raised for NetBox integration errors while preserving safe API contracts."""
 
     def __init__(
         self,
         status_code: int,
         code: str,
         message: str,
-        details: Any = None,
+        details: object | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code

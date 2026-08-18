@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     )
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 2_592_000
-    netbox_expected_version: str = Field(default="", validation_alias="NETBOX_EXPECTED_VERSION")
+    netbox_expected_version: str = Field(
+        default="", validation_alias="NETBOX_EXPECTED_VERSION"
+    )
     netbox_timeout_seconds: float = 10.0
     netbox_page_size: int = 100
     netbox_retry_max_attempts: int = 4
@@ -40,7 +42,10 @@ class Settings(BaseSettings):
     netbox_ca_cert: str = Field(
         default="",
         validation_alias="NETBOX_CA_CERT",
-        description="Path to CA certificate file for NetBox TLS verification. If not set, uses system default trust store.",
+        description=(
+            "Path to CA certificate file for NetBox TLS verification. If not set, "
+            "uses the system default trust store."
+        ),
     )
 
     @property

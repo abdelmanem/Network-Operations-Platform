@@ -73,18 +73,21 @@ class PySnmpSession(SNMPSession):
 
         async def operation() -> tuple[str, Any]:
             pysnmp = _pysnmp_asyncio()
-            error_indication, error_status, error_index, var_binds = (
-                await pysnmp.get_cmd(
-                    self.engine,
-                    pysnmp.CommunityData(self.community),
-                    pysnmp.UdpTransportTarget(
-                        (self.hostname, self.port),
-                        timeout=self.timeout_seconds,
-                        retries=self.retries,
-                    ),
-                    pysnmp.ContextData(),
-                    pysnmp.ObjectType(pysnmp.ObjectIdentity(oid)),
-                )
+            (
+                error_indication,
+                error_status,
+                error_index,
+                var_binds,
+            ) = await pysnmp.get_cmd(
+                self.engine,
+                pysnmp.CommunityData(self.community),
+                pysnmp.UdpTransportTarget(
+                    (self.hostname, self.port),
+                    timeout=self.timeout_seconds,
+                    retries=self.retries,
+                ),
+                pysnmp.ContextData(),
+                pysnmp.ObjectType(pysnmp.ObjectIdentity(oid)),
             )
             if error_indication:
                 raise RuntimeError(str(error_indication))
@@ -104,19 +107,22 @@ class PySnmpSession(SNMPSession):
         async def operation() -> list[tuple[str, Any]]:
             pysnmp = _pysnmp_asyncio()
             results: list[tuple[str, Any]] = []
-            error_indication, error_status, error_index, var_bind_table = (
-                await pysnmp.next_cmd(
-                    self.engine,
-                    pysnmp.CommunityData(self.community),
-                    pysnmp.UdpTransportTarget(
-                        (self.hostname, self.port),
-                        timeout=self.timeout_seconds,
-                        retries=self.retries,
-                    ),
-                    pysnmp.ContextData(),
-                    pysnmp.ObjectType(pysnmp.ObjectIdentity(oid)),
-                    lexicographic_mode=False,
-                )
+            (
+                error_indication,
+                error_status,
+                error_index,
+                var_bind_table,
+            ) = await pysnmp.next_cmd(
+                self.engine,
+                pysnmp.CommunityData(self.community),
+                pysnmp.UdpTransportTarget(
+                    (self.hostname, self.port),
+                    timeout=self.timeout_seconds,
+                    retries=self.retries,
+                ),
+                pysnmp.ContextData(),
+                pysnmp.ObjectType(pysnmp.ObjectIdentity(oid)),
+                lexicographic_mode=False,
             )
             if error_indication:
                 raise RuntimeError(str(error_indication))

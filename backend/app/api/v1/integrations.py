@@ -1,32 +1,31 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Any
 from uuid import UUID, uuid4
-from datetime import datetime, UTC
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.v1.dependencies import get_db_session, get_application_container
-from backend.app.api.v1.exceptions import NetBoxIntegrationException
-from backend.app.auth.api.dependencies import require_permission, get_current_user
-from backend.app.auth.domain.models import User
+from backend.app.api.v1.dependencies import get_application_container, get_db_session
+from backend.app.api.v1.exceptions import NetBoxIntegrationError
 from backend.app.audit.api.router import get_audit_service
 from backend.app.audit.application.services import AuditService
-from backend.app.persistence.repositories import SnapshotRepository
-from backend.app.persistence.models import SnapshotSource
-from backend.app.schemas.integrations import (
-    NetBoxIntegrationStatusResponse,
-    NetBoxTestConnectionResponse,
-    NetBoxSyncResponse,
-    InventoryCounts,
-)
+from backend.app.auth.api.dependencies import get_current_user, require_permission
+from backend.app.auth.domain.models import User
 from backend.app.integrations.netbox.exceptions import (
     NetBoxResponseError,
     NetBoxTransportError,
     NetBoxValidationError,
     NetBoxVersionMismatchError,
+)
+from backend.app.persistence.repositories import SnapshotRepository
+from backend.app.schemas.integrations import (
+    InventoryCounts,
+    NetBoxIntegrationStatusResponse,
+    NetBoxSyncResponse,
+    NetBoxTestConnectionResponse,
 )
 
 logger = logging.getLogger("backend.app.api.integrations")
@@ -38,12 +37,15 @@ def _handle_netbox_error(exc: Exception) -> None:
     logger.exception("NetBox integration error occurred")
     if isinstance(exc, NetBoxResponseError):
         if exc.status_code in (401, 403):
-            raise NetBoxIntegrationException(
+            raise NetBoxIntegrationError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 code="NETBOX_AUTHENTICATION_FAILED",
-                message="NetBox Authentication Failed: The NetBox server is reachable, but authentication failed.",
+                message=(
+                    "NetBox Authentication Failed: The NetBox server is reachable, "
+                    "but authentication failed."
+                ),
             )
-        raise NetBoxIntegrationException(
+        raise NetBoxIntegrationError(
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="NETBOX_UNREACHABLE",
             message=f"NetBox response error: {exc.detail}",
@@ -51,40 +53,43 @@ def _handle_netbox_error(exc: Exception) -> None:
     elif isinstance(exc, NetBoxTransportError):
         err_msg = str(exc)
         if any(term in err_msg.lower() for term in ("cert", "ssl", "verify")):
-            raise NetBoxIntegrationException(
+            raise NetBoxIntegrationError(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 code="NETBOX_TLS_VALIDATION_FAILED",
-                message="NetBox Connection Failed: The NetBox server certificate could not be validated.",
+                message=(
+                    "NetBox Connection Failed: The NetBox server certificate "
+                    "could not be validated."
+                ),
             )
-        raise NetBoxIntegrationException(
+        raise NetBoxIntegrationError(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             code="NETBOX_UNREACHABLE",
             message="NetBox Unreachable: The NetBox API could not be reached.",
         )
     elif isinstance(exc, NetBoxVersionMismatchError):
-        raise NetBoxIntegrationException(
+        raise NetBoxIntegrationError(
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="NETBOX_VERSION_MISMATCH",
-            message=f"Unsupported NetBox Version: {str(exc)}",
+            message=f"Unsupported NetBox Version: {exc}",
         )
     elif isinstance(exc, NetBoxValidationError):
-        raise NetBoxIntegrationException(
+        raise NetBoxIntegrationError(
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="NETBOX_VERSION_MISMATCH",
-            message=f"NetBox Validation Failed: {str(exc)}",
+            message=f"NetBox Validation Failed: {exc}",
         )
     else:
-        raise NetBoxIntegrationException(
+        raise NetBoxIntegrationError(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             code="NETBOX_SYNC_FAILED",
-            message=f"NetBox error: {str(exc)}",
+            message=f"NetBox error: {exc}",
         )
 
 
 async def run_netbox_sync_background(
     job_id: UUID,
     db_session: Session,
-    container: any,
+    container: Any,  # noqa: ANN401 - container is intentionally dynamic
     actor_id: UUID,
     audit_service: AuditService,
 ) -> None:
@@ -189,33 +194,23 @@ def get_status(
         sync_completed_at = latest_job.finished_at
         sync_error = latest_job.error_message
 
-    # Quick connectivity check
-    connected = False
-    tls_verified = False
-    authenticated = False
-    version = None
-    hostname = None
-
+    # Quick connectivity check is intentionally conservative. This endpoint reports
+    # based on persisted snapshot evidence and settings rather than hard-failing when
+    # the live service is unavailable.
     try:
         inventory_service = container.engine.workflow.inventory_service
-        # Call health check synchronously/asynchronously to check client status
-        # Since this status endpoint should be fast, we use cached status or do a quick status fetch
-        # If the health fails, we fallback gracefully without throwing.
-        health_resp = None
-        # We fetch health directly from NetBoxClient but gracefully catch errors
-        import asyncio
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Run in a background thread or executor if running in async context
-            # However, health is an async method
-            pass
-    except Exception:
-        pass
+        if inventory_service is None:
+            logger.debug("NetBox status endpoint found no live inventory service.")
+    except Exception as exc:
+        logger.debug(
+            "NetBox status endpoint could not inspect live runtime state: %s",
+            exc,
+        )
 
-    # For status endpoint, we report connection based on latest snapshot or a quick check.
-    # To keep this endpoint extremely fast, we fetch settings parameters and connection details.
-    # If there is a latest snapshot, we can assume it was previously verified.
-    # We can also quickly inspect settings:
+    # For status endpoint, we report connection based on latest snapshot or a quick
+    # check. To keep this endpoint extremely fast, we fetch settings parameters and
+    # connection details. If there is a latest snapshot, we can assume it was
+    # previously verified. We can also quickly inspect settings:
     tls_verified = bool(settings.netbox_ca_cert)
     configured_token = bool(settings.netbox_token)
 
@@ -225,7 +220,9 @@ def get_status(
         tls_verified=tls_verified,
         authenticated=configured_token,
         version=settings.netbox_expected_version,
-        hostname=settings.netbox_base_url.split("//")[-1].split(":")[0] if configured else None,
+        hostname=settings.netbox_base_url.split("//")[-1].split(":")[0]
+        if configured
+        else None,
         last_successful_sync=last_successful_sync,
         current_sync_status=current_sync_status,
         sync_started_at=sync_started_at,
@@ -283,7 +280,9 @@ async def test_connection(
         raise  # pragma: no cover
 
 
-@router.post("/sync", status_code=status.HTTP_202_ACCEPTED, response_model=NetBoxSyncResponse)
+@router.post(
+    "/sync", status_code=status.HTTP_202_ACCEPTED, response_model=NetBoxSyncResponse
+)
 async def synchronize_inventory(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -299,12 +298,14 @@ async def synchronize_inventory(
     from backend.app.persistence.models import NetBoxSyncJobRecord
 
     # Check if a job is already queued or running
-    active_job = db_session.query(NetBoxSyncJobRecord).filter(
-        NetBoxSyncJobRecord.status.in_(["queued", "running"])
-    ).first()
+    active_job = (
+        db_session.query(NetBoxSyncJobRecord)
+        .filter(NetBoxSyncJobRecord.status.in_(["queued", "running"]))
+        .first()
+    )
 
     if active_job is not None:
-        raise NetBoxIntegrationException(
+        raise NetBoxIntegrationError(
             status_code=status.HTTP_409_CONFLICT,
             code="NETBOX_SYNC_ALREADY_RUNNING",
             message="Another NetBox synchronization is already in progress.",

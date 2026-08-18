@@ -40,8 +40,7 @@ DEFAULT_DECISION_RULE_DEFINITIONS: tuple[DecisionRuleDefinition, ...] = (
     DecisionRuleDefinition(
         code="policy_error",
         description=(
-            "The evaluation result contains errors and could not reach full "
-            "compliance."
+            "The evaluation result contains errors and could not reach full compliance."
         ),
         status=DecisionStatus.WARNING,
         confidence=50,
@@ -62,7 +61,7 @@ DEFAULT_DECISION_RULE_DEFINITIONS: tuple[DecisionRuleDefinition, ...] = (
     DecisionRuleDefinition(
         code="policy_unknown",
         description=(
-            "The evaluation result could not be mapped to a deterministic " "decision."
+            "The evaluation result could not be mapped to a deterministic decision."
         ),
         status=DecisionStatus.UNKNOWN,
         confidence=25,

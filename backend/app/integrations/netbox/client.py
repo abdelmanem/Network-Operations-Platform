@@ -45,12 +45,12 @@ class NetBoxSettings(Protocol):
     """Settings values required by the NetBox client."""
 
     netbox_base_url: str
-    netbox_token: str | None
+    netbox_token: str
     netbox_timeout_seconds: float
     netbox_retry_max_attempts: int
     netbox_retry_base_delay_seconds: float
     netbox_page_size: int
-    netbox_expected_version: str | None
+    netbox_expected_version: str
     netbox_ca_cert: str
 
 
@@ -113,11 +113,12 @@ class NetBoxClient:
         ca_cert = getattr(settings, "netbox_ca_cert", "") or None
         if ca_cert:
             from pathlib import Path
+
             cert_path = Path(ca_cert)
             if not cert_path.is_absolute():
                 project_root = Path(__file__).resolve().parents[4]
                 ca_cert = str(project_root / cert_path)
-        
+
         return cls(
             base_url=getattr(settings, "netbox_base_url", ""),
             authentication=authentication,

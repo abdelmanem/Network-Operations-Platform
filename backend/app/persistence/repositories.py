@@ -13,19 +13,25 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.comparison.result import InventoryComparisonResult
 from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapshot
+from backend.app.inventory.entities import (
+    Device as CanonicalDevice,
+)
+from backend.app.inventory.entities import (
+    Interface as CanonicalInterface,
+)
 from backend.app.persistence.models import (
     ComparisonResultRecord,
     DiscoveryRunRecord,
     DiscoveryRunStatus,
     EvidenceRecord,
     FindingRecord,
+    NetBoxSyncJobRecord,
     SnapshotDeviceRecord,
     SnapshotInterfaceRecord,
     SnapshotNeighborRecord,
     SnapshotRecord,
     SnapshotSource,
     SnapshotVLANRecord,
-    NetBoxSyncJobRecord,
 )
 from backend.app.snapshot.entities import (
     DeviceSnapshot,
@@ -126,10 +132,12 @@ class SnapshotRepository:
     ) -> SnapshotRecord:
         """Persist one immutable canonical NetBox inventory snapshot."""
 
-        interfaces_by_device = {}
+        interfaces_by_device: dict[str, list[CanonicalInterface]] = {}
         for interface in getattr(snapshot, "interfaces", []):
             if getattr(interface, "device_name", None):
-                interfaces_by_device.setdefault(interface.device_name, []).append(interface)
+                interfaces_by_device.setdefault(interface.device_name, []).append(
+                    interface
+                )
 
         record = SnapshotRecord(
             id=uuid4(),
@@ -140,17 +148,28 @@ class SnapshotRepository:
             payload=self._json_safe(snapshot.model_dump(mode="json")),
         )
         record.devices = [
-            self._netbox_device_record(device, interfaces_by_device.get(device.name, [])) for device in snapshot.devices
+            self._netbox_device_record(
+                device, interfaces_by_device.get(device.name, [])
+            )
+            for device in snapshot.devices
         ]
         self.session.add(record)
         return record
 
-    def _netbox_device_record(self, device: object, interfaces: list[object]) -> SnapshotDeviceRecord:
+    def _netbox_device_record(
+        self,
+        device: CanonicalDevice,
+        interfaces: list[CanonicalInterface],
+    ) -> SnapshotDeviceRecord:
         record = SnapshotDeviceRecord(
             id=uuid4(),
             device_id=device.name,
             name=device.name,
-            manufacturer=device.device_type.manufacturer.name if device.device_type and device.device_type.manufacturer else None,
+            manufacturer=(
+                device.device_type.manufacturer.name
+                if device.device_type and device.device_type.manufacturer
+                else None
+            ),
             model=device.device_type.model if device.device_type else None,
             serial_number=device.serial,
             product_id=None,
@@ -188,9 +207,11 @@ class SnapshotRepository:
 
     def get_latest_sync_job(self) -> NetBoxSyncJobRecord | None:
         """Retrieve the most recent NetBox synchronization job."""
-        statement = select(NetBoxSyncJobRecord).order_by(
-            NetBoxSyncJobRecord.created_at.desc()
-        ).limit(1)
+        statement = (
+            select(NetBoxSyncJobRecord)
+            .order_by(NetBoxSyncJobRecord.created_at.desc())
+            .limit(1)
+        )
         return self.session.scalars(statement).first()
 
     def get(self, identity: UUID) -> SnapshotRecord | None:

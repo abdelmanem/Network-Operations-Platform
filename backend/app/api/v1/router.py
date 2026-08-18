@@ -7,8 +7,8 @@ from backend.app.api.v1.devices import router as devices_router
 from backend.app.api.v1.findings import router as findings_router
 from backend.app.api.v1.health import router as health_router
 from backend.app.api.v1.history import router as history_router
-from backend.app.api.v1.inventory import router as inventory_router
 from backend.app.api.v1.integrations import router as integrations_router
+from backend.app.api.v1.inventory import router as inventory_router
 from backend.app.api.v1.jobs import router as jobs_router
 from backend.app.api.v1.metrics import router as metrics_router
 from backend.app.api.v1.scheduler import router as scheduler_router

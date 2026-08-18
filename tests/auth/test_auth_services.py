@@ -73,9 +73,7 @@ def test_authentication_and_authorization_flow() -> None:
     )
     assert user.username == "alice"
 
-    token_pair = auth_service.authenticate_user(
-        "alice", "SecureP@ssw0rd!"
-    )  # noqa: S105
+    token_pair = auth_service.authenticate_user("alice", "SecureP@ssw0rd!")  # noqa: S105
     assert token_pair.access_token
     assert token_pair.refresh_token
 

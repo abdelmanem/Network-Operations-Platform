@@ -12,6 +12,7 @@ from backend.app.comparison.engine import ComparisonEngine
 from backend.app.comparison.result import InventoryComparisonResult
 from backend.app.evaluation.context import EvaluationContext
 from backend.app.evaluation.engine import EvaluationEngine
+from backend.app.integrations.netbox.service import NetBoxService
 from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapshot
 from backend.app.orchestration.coordinator import DiscoveryCoordinator
 from backend.app.orchestration.events import (
@@ -30,6 +31,8 @@ from backend.app.snapshot.entities import InventorySnapshot as LiveInventorySnap
 
 class InventoryServiceProtocol(Protocol):
     """Inventory service protocol consumed by orchestration."""
+
+    netbox_service: NetBoxService
 
     async def synchronize(
         self,

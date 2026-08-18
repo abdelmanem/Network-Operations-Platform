@@ -84,20 +84,29 @@ class _InMemorySnapshotRepository:
 
     async def delete(self, snapshot_id: object) -> None:
         self._snapshots = [
-            snapshot for snapshot in self._snapshots if snapshot.snapshot_id != snapshot_id
+            snapshot
+            for snapshot in self._snapshots
+            if snapshot.snapshot_id != snapshot_id
         ]
 
     async def clear(self) -> None:
         self._snapshots.clear()
 
 
-def _build_runtime_services(settings: Settings) -> tuple[InventoryService, CollectorRuntimeEngine]:
+def _build_runtime_services(
+    settings: Settings,
+) -> tuple[InventoryService, CollectorRuntimeEngine]:
     """Build the real NetBox inventory and collector runtime graph."""
 
     if not settings.netbox_url:
-        raise ValueError("NETBOX_URL configuration is missing or empty. A valid URL is required.")
+        raise ValueError(
+            "NETBOX_URL configuration is missing or empty. A valid URL is required."
+        )
     if not settings.netbox_expected_version:
-        raise ValueError("NETBOX_EXPECTED_VERSION configuration is missing or empty. A valid version is required.")
+        raise ValueError(
+            "NETBOX_EXPECTED_VERSION configuration is missing or empty. A valid "
+            "version is required."
+        )
 
     settings.netbox_base_url = settings.netbox_url
     netbox_client = NetBoxClient.from_settings(
@@ -218,14 +227,18 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         async with lifecycle_context(container.lifecycle):
-            from datetime import datetime, UTC
+            from datetime import UTC, datetime
+
             from backend.app.database.session import SessionLocal
             from backend.app.persistence.models import NetBoxSyncJobRecord
+
             session = SessionLocal()
             try:
-                stuck_jobs = session.query(NetBoxSyncJobRecord).filter(
-                    NetBoxSyncJobRecord.status.in_(["queued", "running"])
-                ).all()
+                stuck_jobs = (
+                    session.query(NetBoxSyncJobRecord)
+                    .filter(NetBoxSyncJobRecord.status.in_(["queued", "running"]))
+                    .all()
+                )
                 for job in stuck_jobs:
                     job.status = "failed"
                     job.finished_at = datetime.now(UTC)
@@ -305,12 +318,12 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         response.headers.setdefault("Cache-Control", "no-store")
         return response
 
-    from backend.app.api.v1.exceptions import NetBoxIntegrationException
+    from backend.app.api.v1.exceptions import NetBoxIntegrationError
 
-    @app.exception_handler(NetBoxIntegrationException)
+    @app.exception_handler(NetBoxIntegrationError)
     async def handle_netbox_integration_error(
         request: Request,
-        exc: NetBoxIntegrationException,
+        exc: NetBoxIntegrationError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,

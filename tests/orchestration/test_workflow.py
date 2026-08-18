@@ -6,17 +6,17 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from backend.app.cache.redis import InMemoryCache
 from backend.app.collectors.execution.result import CollectorExecutionResult
 from backend.app.collectors.execution.status import CollectorExecutionStatus
 from backend.app.collectors.runtime.context import CollectorRuntimeContext
 from backend.app.collectors.runtime.job import CollectorJob
-from backend.app.cache.redis import InMemoryCache
 from backend.app.comparison.engine import ComparisonEngine
 from backend.app.compliance.domain.enums import RuleStatus
-from backend.app.config.settings import get_settings
 from backend.app.compliance.policies.models import Policy
 from backend.app.compliance.rules.base import Rule
 from backend.app.compliance.rules.metadata import RuleMetadata
+from backend.app.config.settings import get_settings
 from backend.app.discovery.context import DiscoveryTarget
 from backend.app.evaluation.engine import EvaluationEngine
 from backend.app.events.models import BaseEvent
@@ -35,8 +35,6 @@ from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapsh
 from backend.app.inventory.entities import Device, DeviceType, Manufacturer
 from backend.app.inventory.mapper import InventoryMapper
 from backend.app.models.base import BaseModel
-from backend.app.services.base import ServiceContext
-from backend.app.services.inventory import InventoryService
 from backend.app.orchestration import (
     CancellationToken,
     DiscoveryCoordinator,
@@ -46,9 +44,11 @@ from backend.app.orchestration import (
     OrchestrationStatus,
     WorkflowEngine,
 )
-from backend.app.orchestration.jobs import OrchestrationJob
 from backend.app.orchestration.events import OrchestrationEventNames
+from backend.app.orchestration.jobs import OrchestrationJob
 from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
+from backend.app.services.base import ServiceContext
+from backend.app.services.inventory import InventoryService
 from backend.app.snapshot.entities import (
     DeviceSnapshot,
 )
@@ -500,15 +500,12 @@ async def test_variance_detection_device_attribute_mismatch(
     assert result.status == OrchestrationStatus.SUCCEEDED
     assert result.comparison_result is not None
     differences = result.comparison_result.differences
-    modified_diffs = [
-        d for d in differences if d.difference_type.value == "modified"
-    ]
+    modified_diffs = [d for d in differences if d.difference_type.value == "modified"]
     assert len(modified_diffs) >= 1
     expected_fields = {"serial", "model", "primary_ip"}
     actual_fields = {d.field_name for d in modified_diffs if d.field_name}
     assert actual_fields & expected_fields, (
-        f"Expected to find mismatch on {expected_fields}, "
-        f"but found {actual_fields}"
+        f"Expected to find mismatch on {expected_fields}, but found {actual_fields}"
     )
     assert result.comparison_record_id is not None
 
@@ -556,8 +553,8 @@ async def test_variance_persistence_enables_historical_comparison(
     comparison_id_1 = result1.comparison_record_id
 
     from backend.app.persistence.repositories import (
-        HistoryRepository,
         FindingRepository,
+        HistoryRepository,
     )
 
     history_repo = HistoryRepository(session)

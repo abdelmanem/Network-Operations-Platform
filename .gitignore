@@ -12,6 +12,9 @@ build/
 .env
 .env.*
 !.env.example
+certs/*.crt
+certs/*.pem
+certs/*.key
 alembic/versions/*.pyc
 *.log
 

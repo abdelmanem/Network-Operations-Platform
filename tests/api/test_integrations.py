@@ -1,36 +1,37 @@
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Iterator
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
-from datetime import datetime, UTC
-from typing import Iterator
 
-from fastapi import status
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
-
+import pytest
 from backend.app.api.v1.dependencies import get_db_session as get_db_v1
 from backend.app.auth.api.dependencies import get_db_session as get_db_auth
-from backend.app.auth.application.services import AuthenticationService, PasswordHashingService, TokenService
+from backend.app.auth.application.services import (
+    AuthenticationService,
+    PasswordHashingService,
+    TokenService,
+)
 from backend.app.auth.infrastructure.repositories import (
-    SQLAlchemyUserRepository,
-    SQLAlchemyRoleRepository,
-    SQLAlchemyPermissionRepository,
     SQLAlchemyAuditEventRepository,
+    SQLAlchemyPermissionRepository,
+    SQLAlchemyRoleRepository,
+    SQLAlchemyUserRepository,
 )
 from backend.app.core.application import create_application
-from backend.app.models.base import BaseModel
-from backend.app.persistence.models import NetBoxSyncJobRecord
-from backend.app.persistence.repositories import SnapshotRepository
-from backend.app.integrations.netbox.models import NetBoxStatusResponse
 from backend.app.integrations.netbox.exceptions import (
     NetBoxResponseError,
     NetBoxTransportError,
     NetBoxVersionMismatchError,
 )
+from backend.app.integrations.netbox.models import NetBoxStatusResponse
+from backend.app.models.base import BaseModel
+from backend.app.persistence.repositories import SnapshotRepository
+from fastapi import status
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.fixture()
@@ -49,6 +50,7 @@ def db_session() -> Iterator[Session]:
 @pytest.fixture()
 def auth_service(db_session: Session) -> AuthenticationService:
     from backend.app.config.settings import get_settings
+
     return AuthenticationService(
         user_repository=SQLAlchemyUserRepository(db_session),
         role_repository=SQLAlchemyRoleRepository(db_session),
@@ -60,13 +62,18 @@ def auth_service(db_session: Session) -> AuthenticationService:
 
 
 @pytest.fixture()
-def client(db_session: Session, auth_service: AuthenticationService) -> Iterator[TestClient]:
+def client(
+    db_session: Session, auth_service: AuthenticationService
+) -> Iterator[TestClient]:
     app = create_application()
 
     def override_get_db_session() -> Iterator[Session]:
         yield db_session
 
-    from backend.app.auth.api.dependencies import get_auth_service as get_auth_service_dep
+    from backend.app.auth.api.dependencies import (
+        get_auth_service as get_auth_service_dep,
+    )
+
     app.dependency_overrides[get_db_v1] = override_get_db_session
     app.dependency_overrides[get_db_auth] = override_get_db_session
     app.dependency_overrides[get_auth_service_dep] = lambda: auth_service
@@ -136,7 +143,9 @@ def test_test_connection_endpoint_unauthorized(client: TestClient) -> None:
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-def test_test_connection_endpoint_forbidden(client: TestClient, reader_token: str) -> None:
+def test_test_connection_endpoint_forbidden(
+    client: TestClient, reader_token: str
+) -> None:
     headers = {"Authorization": f"Bearer {reader_token}"}
     response = client.post("/api/v1/integrations/netbox/test", headers=headers)
     assert response.status_code == status.HTTP_403_FORBIDDEN

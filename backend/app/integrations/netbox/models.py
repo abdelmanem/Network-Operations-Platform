@@ -3,9 +3,54 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
-from typing import Any
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+
+def _unwrap_choice_value(value: object) -> object | None:
+    """Normalize NetBox enum-like values from dicts or objects."""
+
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        inner_value = value.get("value")
+        return cast(object | None, inner_value)
+    if isinstance(value, BaseModel):
+        payload = value.model_dump()
+        if isinstance(payload, dict):
+            inner_value = payload.get("value")
+            if inner_value is not None:
+                return cast(object, inner_value)
+    try:
+        choice_value = object.__getattribute__(value, "value")
+    except (AttributeError, TypeError):
+        return None
+    return cast(object, choice_value)
+
+
+def _coerce_int(value: object) -> int | None:
+    """Coerce NetBox integer-like values to a Python int."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    normalized = _unwrap_choice_value(value)
+    if normalized is None:
+        return None
+    return _coerce_int(normalized)
 
 
 class NetBoxModel(BaseModel):
@@ -40,17 +85,8 @@ class NetBoxIPAddressReference(NetBoxModel):
 
     @field_validator("family", mode="before")
     @classmethod
-    def _validate_family(cls, v: Any) -> int | None:
-        if isinstance(v, dict):
-            return v.get("value")
-        if hasattr(v, "value"):
-            return getattr(v, "value")
-        if v is None:
-            return None
-        try:
-            return int(v)
-        except (ValueError, TypeError):
-            return None
+    def _validate_family(cls, v: object) -> int | None:
+        return _coerce_int(v)
 
 
 class NetBoxDeviceTypeReference(NetBoxModel):
@@ -180,14 +216,11 @@ class NetBoxInterface(NetBoxModel):
 
     @field_validator("type", mode="before")
     @classmethod
-    def _validate_type(cls, v: Any) -> str | None:
-        if isinstance(v, dict):
-            return v.get("value")
-        if hasattr(v, "value"):
-            return getattr(v, "value")
-        if v is None:
+    def _validate_type(cls, v: object) -> str | None:
+        value = _unwrap_choice_value(v)
+        if value is None:
             return None
-        return str(v)
+        return str(value)
 
 
 class NetBoxIPAddress(NetBoxModel):
@@ -203,17 +236,8 @@ class NetBoxIPAddress(NetBoxModel):
 
     @field_validator("family", mode="before")
     @classmethod
-    def _validate_family(cls, v: Any) -> int | None:
-        if isinstance(v, dict):
-            return v.get("value")
-        if hasattr(v, "value"):
-            return getattr(v, "value")
-        if v is None:
-            return None
-        try:
-            return int(v)
-        except (ValueError, TypeError):
-            return None
+    def _validate_family(cls, v: object) -> int | None:
+        return _coerce_int(v)
 
 
 class NetBoxVLAN(NetBoxModel):

@@ -84,8 +84,7 @@ async def test_ios_collector_selects_ssh_before_http_and_collects_inventory() ->
         commands={
             "show version": "Switch uptime is 1 day",
             "show inventory": (
-                'NAME: "1", DESCR: "x"\n'
-                "PID: WS-C2960X-48FPS-L , VID: V05 , SN: FOC123"
+                'NAME: "1", DESCR: "x"\nPID: WS-C2960X-48FPS-L , VID: V05 , SN: FOC123'
             ),
         },
         executed=[],

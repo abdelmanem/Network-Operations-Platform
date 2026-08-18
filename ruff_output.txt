@@ -1,0 +1,163 @@
+backend\app\api\v1\exceptions.py:4:7: N818 Exception name `NetBoxIntegrationException` should be named with an Error suffix
+backend\app\api\v1\exceptions.py:5:89: E501 Line too long (95 > 88)
+backend\app\api\v1\exceptions.py:12:18: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `details`
+backend\app\api\v1\integrations.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+backend\app\api\v1\integrations.py:8:41: F401 [*] `fastapi.HTTPException` imported but unused
+backend\app\api\v1\integrations.py:18:44: F401 [*] `backend.app.persistence.models.SnapshotSource` imported but unused
+backend\app\api\v1\integrations.py:44:89: E501 Line too long (115 > 88)
+backend\app\api\v1\integrations.py:57:89: E501 Line too long (106 > 88)
+backend\app\api\v1\integrations.py:87:16: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `container`
+backend\app\api\v1\integrations.py:193:5: F841 Local variable `connected` is assigned to but never used
+backend\app\api\v1\integrations.py:195:5: F841 Local variable `authenticated` is assigned to but never used
+backend\app\api\v1\integrations.py:196:5: F841 Local variable `version` is assigned to but never used
+backend\app\api\v1\integrations.py:197:5: F841 Local variable `hostname` is assigned to but never used
+backend\app\api\v1\integrations.py:205:5: S110 `try`-`except`-`pass` detected, consider logging the exception
+backend\app\api\v1\integrations.py:208:89: E501 Line too long (90 > 88)
+backend\app\api\v1\integrations.py:209:89: E501 Line too long (96 > 88)
+backend\app\api\v1\integrations.py:221:89: E501 Line too long (96 > 88)
+backend\app\api\v1\integrations.py:279:89: E501 Line too long (94 > 88)
+backend\app\api\v1\router.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+backend\app\config\settings.py:35:89: E501 Line too long (96 > 88)
+backend\app\config\settings.py:43:89: E501 Line too long (124 > 88)
+backend\app\core\application.py:87:89: E501 Line too long (91 > 88)
+backend\app\core\application.py:94:89: E501 Line too long (99 > 88)
+backend\app\core\application.py:98:89: E501 Line too long (98 > 88)
+backend\app\core\application.py:100:89: E501 Line too long (115 > 88)
+backend\app\core\application.py:221:13: I001 [*] Import block is un-sorted or un-formatted
+backend\app\integrations\netbox\models.py:11:33: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `value`
+backend\app\integrations\netbox\models.py:11:41: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `_unwrap_choice_value`
+backend\app\integrations\netbox\models.py:19:16: B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+backend\app\integrations\netbox\models.py:55:34: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `v`
+backend\app\integrations\netbox\models.py:192:32: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `v`
+backend\app\integrations\netbox\models.py:212:34: ANN401 Dynamically typed expressions (typing.Any) are disallowed in `v`
+backend\app\integrations\netbox\pagination.py:3:1: I001 [*] Import block is un-sorted or un-formatted
+backend\app\persistence\repositories.py:3:1: I001 [*] Import block is un-sorted or un-formatted
+backend\app\persistence\repositories.py:136:89: E501 Line too long (92 > 88)
+backend\app\persistence\repositories.py:147:89: E501 Line too long (120 > 88)
+backend\app\schemas\integrations.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+inspect_netbox_live.py:6:1: I001 [*] Import block is un-sorted or un-formatted
+inspect_netbox_live.py:9:5: ANN201 Missing return type annotation for public function `main`
+inspect_netbox_live.py:15:11: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:29:19: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:30:19: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:49:19: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:52:23: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:57:17: E722 Do not use bare `except`
+inspect_netbox_live.py:58:27: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:61:23: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:65:19: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:66:19: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:80:19: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:83:23: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:88:17: E722 Do not use bare `except`
+inspect_netbox_live.py:89:27: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:92:23: F541 [*] f-string without any placeholders
+inspect_netbox_live.py:96:19: F541 [*] f-string without any placeholders
+test_cert.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+test_cert.py:9:89: E501 Line too long (91 > 88)
+test_cert.py:21:89: E501 Line too long (112 > 88)
+test_client_config.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+test_client_config.py:6:11: ANN201 Missing return type annotation for public function `test_netbox_client`
+test_client_config.py:13:11: F541 [*] f-string without any placeholders
+test_client_config.py:18:11: F541 [*] f-string without any placeholders
+test_client_config.py:28:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:17:8: F401 [*] `json` imported but unused
+test_m30_5_netbox_readiness.py:19:8: F401 [*] `os` imported but unused
+test_m30_5_netbox_readiness.py:22:20: F401 [*] `typing.Any` imported but unused
+test_m30_5_netbox_readiness.py:39:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:39:1: I001 [*] Import block is un-sorted or un-formatted
+test_m30_5_netbox_readiness.py:40:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:41:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:41:53: F401 [*] `backend.app.integrations.netbox.service.NetBoxService` imported but unused
+test_m30_5_netbox_readiness.py:42:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:43:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:44:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:45:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:46:1: E402 Module level import not at top of file
+test_m30_5_netbox_readiness.py:73:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:76:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:83:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:86:89: E501 Line too long (90 > 88)
+test_m30_5_netbox_readiness.py:102:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:104:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:106:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:109:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:119:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:139:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:159:56: F821 Undefined name `NetBoxEndpoint`
+test_m30_5_netbox_readiness.py:162:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:169:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:170:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:175:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:180:89: E501 Line too long (110 > 88)
+test_m30_5_netbox_readiness.py:182:89: E501 Line too long (114 > 88)
+test_m30_5_netbox_readiness.py:212:49: F821 Undefined name `dataset`
+test_m30_5_netbox_readiness.py:214:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:215:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:219:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:248:28: F821 Undefined name `netbox_service`
+test_m30_5_netbox_readiness.py:256:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:280:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:282:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:284:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:289:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:291:19: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:293:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:307:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:308:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:309:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:310:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:312:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:313:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:314:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:316:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:317:46: F821 Undefined name `dataset`
+test_m30_5_netbox_readiness.py:319:44: F821 Undefined name `dataset`
+test_m30_5_netbox_readiness.py:319:88: E501 Line too long (107 > 88)
+test_m30_5_netbox_readiness.py:321:8: F821 Undefined name `dataset`
+test_m30_5_netbox_readiness.py:322:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:323:23: F821 Undefined name `dataset`
+test_m30_5_netbox_readiness.py:329:15: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:331:89: E501 Line too long (123 > 88)
+test_m30_5_netbox_readiness.py:333:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:334:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:335:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:336:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:337:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:338:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:339:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:340:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:341:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:342:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:343:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:344:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:346:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:347:11: F541 [*] f-string without any placeholders
+test_m30_5_netbox_readiness.py:348:11: F541 [*] f-string without any placeholders
+test_netbox_tls.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+test_no_cert_config.py:4:21: F401 [*] `pathlib.Path` imported but unused
+test_no_cert_config.py:9:1: I001 [*] Import block is un-sorted or un-formatted
+test_no_cert_config.py:16:11: ANN201 Missing return type annotation for public function `test_without_cert`
+test_no_cert_config.py:23:11: F541 [*] f-string without any placeholders
+test_no_cert_config.py:28:11: F541 [*] f-string without any placeholders
+test_no_cert_config.py:35:89: E501 Line too long (102 > 88)
+tests\api\test_integrations.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+tests\api\test_integrations.py:4:27: F401 [*] `unittest.mock.AsyncMock` imported but unused
+tests\api\test_integrations.py:6:22: F401 [*] `datetime.datetime` imported but unused
+tests\api\test_integrations.py:6:32: F401 [*] `datetime.UTC` imported but unused
+tests\api\test_integrations.py:7:1: UP035 [*] Import from `collections.abc` instead: `Iterator`
+tests\api\test_integrations.py:17:89: E501 Line too long (109 > 88)
+tests\api\test_integrations.py:26:44: F401 [*] `backend.app.persistence.models.NetBoxSyncJobRecord` imported but unused
+tests\api\test_integrations.py:63:89: E501 Line too long (93 > 88)
+tests\api\test_integrations.py:69:5: I001 [*] Import block is un-sorted or un-formatted
+tests\api\test_integrations.py:69:89: E501 Line too long (90 > 88)
+tests\api\test_integrations.py:139:89: E501 Line too long (91 > 88)
+tests\core\test_config_cwd.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+tests\core\test_config_cwd.py:15:89: E501 Line too long (97 > 88)
+tests\core\test_config_cwd.py:27:89: E501 Line too long (95 > 88)
+tests\core\test_config_cwd.py:39:89: E501 Line too long (125 > 88)
+tests\core\test_config_cwd.py:49:89: E501 Line too long (122 > 88)
+tests\orchestration\test_workflow.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+tests\orchestration\test_workflow.py:558:5: I001 [*] Import block is un-sorted or un-formatted
+Found 161 errors.
+[*] 97 fixable with the `--fix` option (7 hidden fixes can be enabled with the `--unsafe-fixes` option).
