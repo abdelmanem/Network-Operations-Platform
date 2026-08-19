@@ -10,6 +10,8 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
+from backend.app.transports.base import TransportCapability
+
 
 class DiscoveryJobStatus(StrEnum):
     """Durable discovery job lifecycle states."""
@@ -56,6 +58,25 @@ class DiscoveryFailureCode(StrEnum):
     EVIDENCE_PERSISTENCE_FAILED = "EVIDENCE_PERSISTENCE_FAILED"
     SNAPSHOT_PERSISTENCE_FAILED = "SNAPSHOT_PERSISTENCE_FAILED"
     CANCELLED = "CANCELLED"
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryTransportPolicy:
+    """Explicit ordered transport policy for one discovery target."""
+
+    preferred: TransportCapability | None = None
+    fallbacks: tuple[TransportCapability, ...] = ()
+    allow_insecure_telnet: bool = False
+
+    def ordered(self) -> tuple[TransportCapability, ...]:
+        """Return the configured order without duplicates or implicit protocols."""
+
+        configured = (
+            () if self.preferred is None else (self.preferred,)
+        ) + self.fallbacks
+        if not self.allow_insecure_telnet and TransportCapability.TELNET in configured:
+            raise ValueError("Telnet requires explicit insecure-transport approval.")
+        return tuple(dict.fromkeys(configured))
 
 
 _ALLOWED_TRANSITIONS: dict[DiscoveryJobStatus, frozenset[DiscoveryJobStatus]] = {

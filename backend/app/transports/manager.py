@@ -13,6 +13,7 @@ from backend.app.transports.base import (
 from backend.app.transports.circuit_breaker import CircuitBreaker
 from backend.app.transports.connection_pool import ConnectionPool
 from backend.app.transports.credentials import (
+    CredentialProvider,
     CredentialResolver,
     TransportCredentials,
 )
@@ -30,6 +31,7 @@ class TransportManager:
     registry: TransportRegistry = field(default_factory=TransportRegistry)
     pool: ConnectionPool = field(default_factory=ConnectionPool)
     credential_resolver: CredentialResolver | None = None
+    credential_provider: CredentialProvider | None = None
     retry_policy: TransportRetryPolicy = field(default_factory=TransportRetryPolicy)
     timeout: TransportTimeout = field(default_factory=TransportTimeout)
     circuit_breaker: CircuitBreaker = field(default_factory=CircuitBreaker)
@@ -52,6 +54,17 @@ class TransportManager:
         """Return transports that support the requested capabilities."""
 
         return self.registry.select(capabilities)
+
+    def select_ordered(
+        self,
+        capabilities: frozenset[TransportCapability],
+        ordered_names: tuple[str, ...],
+    ) -> tuple[BaseTransport, ...]:
+        """Select registered transports in an explicit policy order."""
+
+        selected = self.registry.select(capabilities)
+        by_name = {transport.name: transport for transport in selected}
+        return tuple(by_name[name] for name in ordered_names if name in by_name)
 
     async def open_session(
         self,
@@ -121,6 +134,13 @@ class TransportManager:
     ) -> TransportCredentials | None:
         """Resolve credentials for a transport target."""
 
+        if (
+            self.credential_provider is not None
+            and target.credential_reference is not None
+        ):
+            return self.credential_provider.resolve_reference(
+                target.credential_reference
+            )
         if self.credential_resolver is None:
             return None
 

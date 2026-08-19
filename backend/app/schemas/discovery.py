@@ -15,11 +15,15 @@ class DiscoveryTargetRequest(BaseModel):
 
     identifier: str = Field(min_length=1, max_length=255)
     address: str = Field(min_length=1, max_length=512)
+    hostname: str | None = Field(default=None, max_length=255)
+    vendor: str | None = Field(default=None, max_length=128)
     tenant_id: str = Field(min_length=1, max_length=255)
     platform_hint: str | None = Field(default=None, max_length=128)
     preferred_transport: str | None = Field(default=None, max_length=64)
     enabled: bool = True
     credential_reference: str = Field(min_length=1, max_length=255)
+    credential_references: dict[str, str] = Field(default_factory=dict)
+    allowed_fallback_transports: list[str] = Field(default_factory=list)
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @field_validator("identifier", "address", "tenant_id", "credential_reference")
@@ -29,6 +33,83 @@ class DiscoveryTargetRequest(BaseModel):
 
         if not value.strip():
             raise ValueError("Value cannot be blank.")
+        return value
+
+    @field_validator("platform_hint")
+    @classmethod
+    def validate_platform_hint(cls, value: str | None) -> str | None:
+        if value is not None and value not in {"cisco-ios", "cisco-iosxe"}:
+            raise ValueError("Unsupported discovery platform.")
+        return value
+
+    @field_validator("preferred_transport")
+    @classmethod
+    def validate_transport(cls, value: str | None) -> str | None:
+        supported = {
+            "ssh",
+            "snmp",
+            "telnet",
+            "icmp",
+            "http",
+            "https",
+            "cisco-api",
+            "netmiko",
+            "paramiko",
+            "pysnmp",
+            "httpx",
+        }
+        if value is not None and value not in supported:
+            raise ValueError("Unsupported discovery transport.")
+        return value
+
+    @field_validator("allowed_fallback_transports")
+    @classmethod
+    def validate_fallback_transports(cls, value: list[str]) -> list[str]:
+        supported = {"ssh", "snmp", "telnet", "icmp", "http", "https", "cisco-api"}
+        if any(transport not in supported for transport in value):
+            raise ValueError("Unsupported discovery fallback transport.")
+        if "telnet" in value:
+            raise ValueError("Telnet requires explicit insecure-transport approval.")
+        return list(dict.fromkeys(value))
+
+
+class DiscoveryTargetResponse(BaseModel):
+    """Persisted target metadata returned to the operator UI."""
+
+    target_id: UUID
+    tenant_id: str
+    identifier: str
+    address: str
+    hostname: str | None = None
+    vendor: str | None = None
+    platform_hint: str | None = None
+    preferred_transport: str | None = None
+    allowed_fallback_transports: list[str] = Field(default_factory=list)
+    credential_references: list[str] = Field(default_factory=list)
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class DiscoveryJobRequest(BaseModel):
+    """Request to execute discovery for an existing target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_id: UUID
+    requested_capabilities: dict[str, object] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    timeout_seconds: float | None = Field(default=None, ge=0.0)
+    correlation_id: str | None = Field(default=None, max_length=255)
+
+    @field_validator("requested_capabilities")
+    @classmethod
+    def validate_requested_collector(
+        cls, value: dict[str, object]
+    ) -> dict[str, object]:
+        collector_name = value.get("collector_name")
+        if collector_name is not None and collector_name != "cisco-ios-inventory":
+            raise ValueError("Unsupported discovery collector.")
         return value
 
 

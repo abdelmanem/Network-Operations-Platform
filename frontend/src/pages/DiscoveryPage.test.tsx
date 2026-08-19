@@ -2,26 +2,36 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { discoveryList, submitDiscoveryJob } = vi.hoisted(() => ({
-  discoveryList: vi.fn(),
-  submitDiscoveryJob: vi.fn(),
-}))
+const { listTargets, createTarget, createJob, getJob, getEvidence } =
+  vi.hoisted(() => ({
+    listTargets: vi.fn(),
+    createTarget: vi.fn(),
+    createJob: vi.fn(),
+    getJob: vi.fn(),
+    getEvidence: vi.fn(),
+  }))
 
 vi.mock('../api/discovery', () => ({
-  getDiscoveryRuns: discoveryList,
-  submitDiscoveryJob,
+  listDiscoveryTargets: listTargets,
+  createDiscoveryTarget: createTarget,
+  createDiscoveryApiJob: createJob,
+  getDiscoveryApiJob: getJob,
+  getDiscoveryEvidence: getEvidence,
 }))
 
 import { DiscoveryPage } from './DiscoveryPage'
 
 describe('DiscoveryPage', () => {
   beforeEach(() => {
-    discoveryList.mockReset()
-    submitDiscoveryJob.mockReset()
+    listTargets.mockReset()
+    createTarget.mockReset()
+    createJob.mockReset()
+    getJob.mockReset()
+    getEvidence.mockReset()
   })
 
-  it('renders an empty state when no discovery runs are available', async () => {
-    discoveryList.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, has_next: false })
+  it('renders an empty state when no discovery targets are available', async () => {
+    listTargets.mockResolvedValue([])
 
     render(
       <MemoryRouter>
@@ -29,36 +39,42 @@ describe('DiscoveryPage', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText(/loading discovery runs/i)).toBeInTheDocument()
-
     await waitFor(() => {
-      expect(screen.getByText(/no discovery runs have been created yet/i)).toBeInTheDocument()
+      expect(screen.getByText(/no targets configured yet/i)).toBeInTheDocument()
     })
   })
 
-  it('submits a discovery job and shows the new state', async () => {
-    discoveryList
-      .mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 20, has_next: false })
-      .mockResolvedValueOnce({
-        items: [
-          {
-            id: 'run-1',
-            target_identifier: 'switch-01',
-            target_address: '10.0.0.1',
-            status: 'started',
-            metadata: {},
-            created_at: '2026-08-09T10:00:00Z',
-            started_at: '2026-08-09T10:00:00Z',
-            finished_at: null,
-          },
-        ],
-        total: 1,
-        page: 1,
-        page_size: 20,
-        has_next: false,
-      })
-
-    submitDiscoveryJob.mockResolvedValue({ job_id: 'job-1', status: 'queued' })
+  it('creates a target, starts a job, and displays terminal evidence', async () => {
+    listTargets.mockResolvedValue([])
+    createTarget.mockResolvedValue({
+      target_id: 'target-1',
+      tenant_id: 'default',
+      identifier: 'switch-01',
+      address: '10.0.0.1',
+      platform_hint: 'cisco-iosxe',
+      preferred_transport: 'netmiko',
+      enabled: true,
+      created_at: '2026-08-19T10:00:00Z',
+      updated_at: '2026-08-19T10:00:00Z',
+    })
+    createJob.mockResolvedValue({
+      job_id: 'job-1',
+      tenant_id: 'default',
+      target_id: 'target-1',
+      discovery_run_id: 'run-1',
+      status: 'queued',
+      selected_transport: null,
+      selected_platform: null,
+      attempts: 0,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-08-19T10:00:00Z',
+      queued_at: '2026-08-19T10:00:00Z',
+      started_at: null,
+      finished_at: null,
+      timeout_seconds: 120,
+      correlation_id: null,
+    })
 
     render(
       <MemoryRouter>
@@ -66,34 +82,40 @@ describe('DiscoveryPage', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.change(screen.getByLabelText(/target identifier/i), {
+    fireEvent.change(screen.getByLabelText(/target name/i), {
       target: { value: 'switch-01' },
     })
-    fireEvent.change(screen.getByLabelText(/target address/i), {
+    fireEvent.change(screen.getByLabelText(/address/i), {
       target: { value: '10.0.0.1' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /run discovery/i }))
+    fireEvent.change(screen.getByLabelText(/credential reference/i), {
+      target: { value: 'credential:network:cisco-prod' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /save target/i }))
 
     await waitFor(() => {
-      expect(submitDiscoveryJob).toHaveBeenCalledWith({
-        collector_contexts: [
-          {
-            target: {
-              identifier: 'switch-01',
-              address: '10.0.0.1',
-              metadata: {},
-            },
-          },
-        ],
-        policies: [],
+      expect(createTarget).toHaveBeenCalledWith({
+        identifier: 'switch-01',
+        address: '10.0.0.1',
+        credential_reference: 'credential:network:cisco-prod',
+        platform_hint: 'cisco-iosxe',
+        preferred_transport: 'netmiko',
+        tenant_id: 'default',
+        enabled: true,
         metadata: {},
-        priority: 0,
-        timeout_seconds: null,
       })
     })
 
+    fireEvent.click(screen.getByRole('button', { name: /start discovery/i }))
     await waitFor(() => {
-      expect(screen.getByText(/discovery submitted/i)).toBeInTheDocument()
+      expect(createJob).toHaveBeenCalledWith({
+        target_id: 'target-1',
+        requested_capabilities: { collector_name: 'cisco-ios-inventory' },
+        metadata: { source: 'discovery-ui' },
+        timeout_seconds: 120,
+        correlation_id: expect.any(String),
+      })
+      expect(screen.getByText('queued')).toBeInTheDocument()
     })
   })
 })

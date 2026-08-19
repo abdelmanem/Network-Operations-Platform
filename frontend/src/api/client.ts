@@ -7,9 +7,11 @@ export const api = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = window.localStorage.getItem('auth-token')
+  const tenantId = window.localStorage.getItem('tenant-id') || 'default'
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`)
   }
+  config.headers.set('X-Tenant-ID', tenantId)
   return config
 })
 

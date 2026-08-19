@@ -68,6 +68,28 @@ def test_target_repository_is_tenant_scoped_and_does_not_store_secret_values(
     assert not hasattr(target, "password")
 
 
+def test_target_persists_transport_policy_and_opaque_credential_references(
+    session: Session,
+) -> None:
+    target = DiscoveryTargetRepository(session).create(
+        tenant_id="tenant-a",
+        identifier="core-02",
+        address="10.0.0.2",
+        credential_reference="credential:network:default",
+        credential_references={"snmp": "credential:network:snmp-prod"},
+        allowed_fallback_transports=["ssh", "snmp"],
+        vendor="cisco",
+        hostname="core-02.example",
+    )
+    session.commit()
+
+    assert target.vendor == "cisco"
+    assert target.hostname == "core-02.example"
+    assert target.allowed_fallback_transports == ["ssh", "snmp"]
+    assert target.credential_references == {"snmp": "credential:network:snmp-prod"}
+    assert "password" not in target.credential_references
+
+
 def test_job_claim_and_valid_terminal_transition(session: Session) -> None:
     target = _target(session)
     run = _run(session)
@@ -215,3 +237,12 @@ def test_m31_2_migration_is_registered_and_contains_boundary_objects() -> None:
         "uq_discovery_jobs_active_tenant_target",
     ):
         assert table_name in contents
+
+
+def test_multi_transport_policy_migration_is_registered() -> None:
+    config = Config("alembic.ini")
+    script = ScriptDirectory.from_config(config)
+    revision = script.get_revision("20260819_1300")
+
+    assert revision is not None
+    assert revision.module.revision == "20260819_1300"

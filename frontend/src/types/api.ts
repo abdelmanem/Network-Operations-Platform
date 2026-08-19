@@ -105,6 +105,76 @@ export interface DiscoveryJobSubmissionResponse {
   message: string
 }
 
+export interface DiscoveryTargetRequest {
+  identifier: string
+  address: string
+  tenant_id: string
+  platform_hint?: string | null
+  preferred_transport?: string | null
+  enabled: boolean
+  credential_reference: string
+  metadata: Record<string, unknown>
+}
+
+export interface DiscoveryTargetResponse {
+  target_id: string
+  tenant_id: string
+  identifier: string
+  address: string
+  platform_hint: string | null
+  preferred_transport: string | null
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface DiscoveryApiJobRequest {
+  target_id: string
+  requested_capabilities: Record<string, unknown>
+  metadata: Record<string, unknown>
+  timeout_seconds?: number | null
+  correlation_id?: string | null
+}
+
+export interface DiscoveryApiJobResponse {
+  job_id: string
+  tenant_id: string
+  target_id: string
+  discovery_run_id: string
+  status:
+    'queued' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'cancelled'
+  selected_transport: string | null
+  selected_platform: string | null
+  attempts: number
+  error_code: string | null
+  error_message: string | null
+  created_at: string
+  queued_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  timeout_seconds: number | null
+  correlation_id: string | null
+}
+
+export interface DiscoveryEvidenceResponse {
+  evidence_id: string
+  tenant_id: string
+  target_id: string
+  discovery_job_id: string
+  discovery_run_id: string
+  collector_name: string
+  platform: string
+  transport: string
+  evidence_type: string
+  command_or_probe: string
+  payload: Record<string, unknown>
+  captured_at: string
+  sequence: number
+  parser_version: string | null
+  normalization_version: string | null
+  content_hash: string
+}
+
 export interface JobStatusResponse {
   job_id: string
   status: string

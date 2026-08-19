@@ -22,6 +22,7 @@ from backend.app.auth.api.router import router as auth_router
 from backend.app.cache.redis import build_cache_backend
 from backend.app.collectors.cisco.factory import build_cisco_inventory_registry
 from backend.app.collectors.cisco.inventory import CiscoInventoryParser
+from backend.app.collectors.registry import CollectorRegistry
 from backend.app.collectors.runtime.dispatcher import CollectorDispatcher
 from backend.app.collectors.runtime.engine import CollectorRuntimeEngine
 from backend.app.collectors.runtime.executor import CollectorExecutor
@@ -95,7 +96,7 @@ class _InMemorySnapshotRepository:
 
 def _build_runtime_services(
     settings: Settings,
-) -> tuple[InventoryService, CollectorRuntimeEngine]:
+) -> tuple[InventoryService, CollectorRuntimeEngine, CollectorRegistry]:
     """Build the real NetBox inventory and collector runtime graph."""
 
     if not settings.netbox_url:
@@ -153,7 +154,7 @@ def _build_runtime_services(
         dispatcher=dispatcher,
         metrics=runtime_metrics,
     )
-    return inventory_service, collector_runtime
+    return inventory_service, collector_runtime, collector_registry
 
 
 @dataclass(slots=True)
@@ -172,6 +173,7 @@ class ApplicationContainer:
     repository: InMemoryJobRepository
     job_manager: JobManager
     worker_registry: WorkerRegistry
+    discovery_collector_registry: CollectorRegistry
 
 
 def create_application(settings: Settings | None = None) -> FastAPI:
@@ -193,7 +195,9 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     event_dispatcher = EventDispatcher(event_registry)
     event_bus = EventBus(registry=event_registry)
     notification_service = NotificationService(adapters={}, mappings=[])
-    inventory_service, collector_runtime = _build_runtime_services(app_settings)
+    inventory_service, collector_runtime, collector_registry = _build_runtime_services(
+        app_settings
+    )
     workflow = WorkflowEngine(
         inventory_service=inventory_service,
         discovery_coordinator=DiscoveryCoordinator(collector_runtime),
@@ -222,6 +226,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         repository=repository,
         job_manager=job_manager,
         worker_registry=WorkerRegistry(),
+        discovery_collector_registry=collector_registry,
     )
 
     @asynccontextmanager

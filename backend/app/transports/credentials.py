@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
+from uuid import UUID
 
 if TYPE_CHECKING:
     from backend.app.transports.base import TransportContext
@@ -43,6 +44,33 @@ class CredentialResolver(Protocol):
 
     def resolve(self, context: TransportContext) -> TransportCredentials | None:
         """Resolve credentials for a transport context."""
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialReference:
+    """Opaque tenant-scoped reference to a secret managed elsewhere."""
+
+    credential_id: UUID | str
+    transport: str
+    tenant_id: str
+
+    def as_dict(self) -> dict[str, str]:
+        """Return non-secret reference metadata for diagnostics."""
+
+        return {
+            "credential_id": str(self.credential_id),
+            "transport": self.transport,
+            "tenant_id": self.tenant_id,
+        }
+
+
+class CredentialProvider(Protocol):
+    """Resolve an opaque reference only at execution time."""
+
+    def resolve_reference(
+        self, reference: CredentialReference
+    ) -> TransportCredentials | None:
+        """Return ephemeral credentials without persisting or serializing secrets."""
 
 
 @dataclass(slots=True)

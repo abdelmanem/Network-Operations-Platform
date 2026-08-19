@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from backend.app.transports.credentials import TransportCredentials
+from backend.app.transports.credentials import CredentialReference, TransportCredentials
 from backend.app.transports.retry import TransportRetryPolicy
 from backend.app.transports.session import TransportSession
 from backend.app.transports.timeout import TransportTimeout
@@ -17,7 +17,16 @@ class TransportCapability(StrEnum):
 
     SSH = "SSH"
     SNMP = "SNMP"
+    TELNET = "TELNET"
+    ICMP = "ICMP"
     HTTP = "HTTP"
+
+
+class TransportSecurity(StrEnum):
+    """Security classification used by discovery policy."""
+
+    SECURE = "secure"
+    INSECURE = "insecure"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +36,7 @@ class TransportTarget:
     identifier: str
     address: str
     metadata: dict[str, object] = field(default_factory=dict)
+    credential_reference: CredentialReference | None = None
 
 
 @dataclass(slots=True)
@@ -46,6 +56,7 @@ class BaseTransport(ABC):
 
     name: str
     capabilities: frozenset[TransportCapability]
+    security: TransportSecurity = TransportSecurity.SECURE
 
     @abstractmethod
     def health_check(self, context: TransportContext) -> None:

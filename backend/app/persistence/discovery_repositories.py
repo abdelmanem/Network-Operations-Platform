@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -67,6 +68,10 @@ class DiscoveryTargetRepository:
         identifier: str,
         address: str,
         credential_reference: str,
+        credential_references: Mapping[str, object] | None = None,
+        allowed_fallback_transports: list[str] | None = None,
+        vendor: str | None = None,
+        hostname: str | None = None,
         platform_hint: str | None = None,
         preferred_transport: str | None = None,
         enabled: bool = True,
@@ -78,10 +83,20 @@ class DiscoveryTargetRepository:
             tenant_id=tenant_id,
             identifier=identifier,
             address=address,
+            vendor=vendor,
+            hostname=hostname,
             platform_hint=platform_hint,
             preferred_transport=preferred_transport,
             enabled=enabled,
             credential_reference=credential_reference,
+            credential_references=(
+                {} if credential_references is None else dict(credential_references)
+            ),
+            allowed_fallback_transports=(
+                []
+                if allowed_fallback_transports is None
+                else list(allowed_fallback_transports)
+            ),
             metadata_json={} if metadata is None else dict(metadata),
             created_by=created_by,
         )

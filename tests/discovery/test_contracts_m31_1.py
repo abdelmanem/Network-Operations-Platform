@@ -6,8 +6,10 @@ from backend.app.discovery.contracts import (
     DiscoveryEvidence,
     DiscoveryJobStatus,
     DiscoveryTraceability,
+    DiscoveryTransportPolicy,
     transition_job,
 )
+from backend.app.transports.base import TransportCapability
 
 
 def test_discovery_job_state_machine_allows_only_valid_transitions() -> None:
@@ -34,6 +36,24 @@ def test_terminal_discovery_job_states_are_terminal() -> None:
     assert DiscoveryJobStatus.FAILED.is_terminal is True
     assert DiscoveryJobStatus.TIMED_OUT.is_terminal is True
     assert DiscoveryJobStatus.CANCELLED.is_terminal is True
+
+
+def test_transport_policy_is_explicit_and_does_not_implicitly_try_telnet() -> None:
+    policy = DiscoveryTransportPolicy(
+        preferred=TransportCapability.SNMP,
+        fallbacks=(TransportCapability.SSH,),
+    )
+
+    assert policy.ordered() == (
+        TransportCapability.SNMP,
+        TransportCapability.SSH,
+    )
+
+    with pytest.raises(ValueError, match="Telnet"):
+        DiscoveryTransportPolicy(
+            preferred=TransportCapability.SSH,
+            fallbacks=(TransportCapability.TELNET,),
+        ).ordered()
 
 
 def test_evidence_is_traceable_and_hashable() -> None:

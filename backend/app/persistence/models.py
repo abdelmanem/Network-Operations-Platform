@@ -120,10 +120,18 @@ class DiscoveryTargetRecord(BaseModel):
     tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(512), nullable=False)
+    vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     platform_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
     preferred_transport: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     credential_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    credential_references: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    allowed_fallback_transports: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=dict, nullable=False
     )
