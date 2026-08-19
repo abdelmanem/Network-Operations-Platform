@@ -5,9 +5,11 @@ import pytest
 from backend.app.discovery.contracts import (
     DiscoveryEvidence,
     DiscoveryJobStatus,
+    DiscoveryScopeType,
     DiscoveryTraceability,
     DiscoveryTransportPolicy,
     transition_job,
+    validate_scope,
 )
 from backend.app.transports.base import TransportCapability
 
@@ -54,6 +56,26 @@ def test_transport_policy_is_explicit_and_does_not_implicitly_try_telnet() -> No
             preferred=TransportCapability.SSH,
             fallbacks=(TransportCapability.TELNET,),
         ).ordered()
+
+
+def test_scope_validation_supports_single_device_range_and_cidr() -> None:
+    validate_scope(DiscoveryScopeType.SINGLE_DEVICE, address="10.0.0.1")
+    validate_scope(
+        DiscoveryScopeType.IP_RANGE,
+        address="10.0.0.1",
+        scope_end="10.0.0.10",
+    )
+    validate_scope(
+        DiscoveryScopeType.CIDR_NETWORK,
+        scope_cidr="10.0.0.0/24",
+    )
+
+    with pytest.raises(ValueError):
+        validate_scope(
+            DiscoveryScopeType.IP_RANGE,
+            address="10.0.0.10",
+            scope_end="10.0.0.1",
+        )
 
 
 def test_evidence_is_traceable_and_hashable() -> None:

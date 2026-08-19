@@ -51,6 +51,11 @@ describe('DiscoveryPage', () => {
       tenant_id: 'default',
       identifier: 'switch-01',
       address: '10.0.0.1',
+      scope_type: 'single_device',
+      scope_end: null,
+      scope_cidr: null,
+      credential_profile_id: 'credential-profile:cisco-production',
+      vendor: null,
       platform_hint: 'cisco-iosxe',
       preferred_transport: 'netmiko',
       enabled: true,
@@ -88,8 +93,8 @@ describe('DiscoveryPage', () => {
     fireEvent.change(screen.getByLabelText(/address/i), {
       target: { value: '10.0.0.1' },
     })
-    fireEvent.change(screen.getByLabelText(/credential reference/i), {
-      target: { value: 'credential:network:cisco-prod' },
+    fireEvent.change(screen.getByLabelText(/credential profile id/i), {
+      target: { value: 'credential-profile:cisco-production' },
     })
     fireEvent.click(screen.getByRole('button', { name: /save target/i }))
 
@@ -97,7 +102,12 @@ describe('DiscoveryPage', () => {
       expect(createTarget).toHaveBeenCalledWith({
         identifier: 'switch-01',
         address: '10.0.0.1',
-        credential_reference: 'credential:network:cisco-prod',
+        scope_type: 'single_device',
+        scope_end: null,
+        scope_cidr: null,
+        credential_profile_id: 'credential-profile:cisco-production',
+        credential_references: {},
+        allowed_fallback_transports: ['snmp', 'http'],
         platform_hint: 'cisco-iosxe',
         preferred_transport: 'netmiko',
         tenant_id: 'default',

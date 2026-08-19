@@ -31,6 +31,28 @@ def upgrade() -> None:
     op.add_column(
         "discovery_targets",
         sa.Column(
+            "scope_type",
+            sa.String(length=32),
+            nullable=False,
+            server_default="single_device",
+        ),
+    )
+    op.add_column(
+        "discovery_targets",
+        sa.Column("scope_end", sa.String(length=512), nullable=True),
+    )
+    op.add_column(
+        "discovery_targets",
+        sa.Column("scope_cidr", sa.String(length=512), nullable=True),
+    )
+    op.add_column(
+        "discovery_targets",
+        sa.Column("credential_profile_id", sa.String(length=255), nullable=True),
+    )
+    op.alter_column("discovery_targets", "scope_type", server_default=None)
+    op.add_column(
+        "discovery_targets",
+        sa.Column(
             "credential_references", sa.JSON(), nullable=False, server_default="{}"
         ),
     )
@@ -56,3 +78,7 @@ def downgrade() -> None:
     op.drop_column("discovery_targets", "credential_references")
     op.drop_column("discovery_targets", "hostname")
     op.drop_column("discovery_targets", "vendor")
+    op.drop_column("discovery_targets", "credential_profile_id")
+    op.drop_column("discovery_targets", "scope_cidr")
+    op.drop_column("discovery_targets", "scope_end")
+    op.drop_column("discovery_targets", "scope_type")

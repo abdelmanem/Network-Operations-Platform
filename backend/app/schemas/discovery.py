@@ -3,9 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from backend.app.discovery.contracts import DiscoveryFailureCode, DiscoveryJobStatus
+from backend.app.discovery.contracts import (
+    DiscoveryFailureCode,
+    DiscoveryJobStatus,
+    DiscoveryScopeType,
+    validate_scope,
+)
 from backend.app.schemas.common import PaginatedResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DiscoveryTargetRequest(BaseModel):
@@ -14,19 +19,23 @@ class DiscoveryTargetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     identifier: str = Field(min_length=1, max_length=255)
-    address: str = Field(min_length=1, max_length=512)
+    address: str | None = Field(default=None, max_length=512)
+    scope_type: DiscoveryScopeType = DiscoveryScopeType.SINGLE_DEVICE
+    scope_end: str | None = Field(default=None, max_length=512)
+    scope_cidr: str | None = Field(default=None, max_length=512)
     hostname: str | None = Field(default=None, max_length=255)
     vendor: str | None = Field(default=None, max_length=128)
     tenant_id: str = Field(min_length=1, max_length=255)
     platform_hint: str | None = Field(default=None, max_length=128)
     preferred_transport: str | None = Field(default=None, max_length=64)
     enabled: bool = True
-    credential_reference: str = Field(min_length=1, max_length=255)
+    credential_reference: str | None = Field(default=None, max_length=255)
+    credential_profile_id: str | None = Field(default=None, max_length=255)
     credential_references: dict[str, str] = Field(default_factory=dict)
     allowed_fallback_transports: list[str] = Field(default_factory=list)
     metadata: dict[str, object] = Field(default_factory=dict)
 
-    @field_validator("identifier", "address", "tenant_id", "credential_reference")
+    @field_validator("identifier", "tenant_id")
     @classmethod
     def reject_blank_values(cls, value: str) -> str:
         """Reject whitespace-only contract values."""
@@ -34,6 +43,18 @@ class DiscoveryTargetRequest(BaseModel):
         if not value.strip():
             raise ValueError("Value cannot be blank.")
         return value
+
+    @model_validator(mode="after")
+    def validate_scope_definition(self) -> DiscoveryTargetRequest:
+        validate_scope(
+            self.scope_type,
+            address=self.address,
+            scope_end=self.scope_end,
+            scope_cidr=self.scope_cidr,
+        )
+        if self.credential_profile_id is None and self.credential_reference is None:
+            raise ValueError("A credential profile is required.")
+        return self
 
     @field_validator("platform_hint")
     @classmethod
@@ -80,12 +101,16 @@ class DiscoveryTargetResponse(BaseModel):
     tenant_id: str
     identifier: str
     address: str
+    scope_type: DiscoveryScopeType
+    scope_end: str | None = None
+    scope_cidr: str | None = None
     hostname: str | None = None
     vendor: str | None = None
     platform_hint: str | None = None
     preferred_transport: str | None = None
     allowed_fallback_transports: list[str] = Field(default_factory=list)
     credential_references: list[str] = Field(default_factory=list)
+    credential_profile_id: str | None = None
     enabled: bool
     created_at: datetime
     updated_at: datetime

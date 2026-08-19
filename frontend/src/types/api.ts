@@ -107,12 +107,20 @@ export interface DiscoveryJobSubmissionResponse {
 
 export interface DiscoveryTargetRequest {
   identifier: string
-  address: string
+  address?: string | null
+  scope_type: 'single_device' | 'ip_range' | 'cidr_network'
+  scope_end?: string | null
+  scope_cidr?: string | null
   tenant_id: string
+  hostname?: string | null
+  vendor?: string | null
   platform_hint?: string | null
   preferred_transport?: string | null
   enabled: boolean
-  credential_reference: string
+  credential_reference?: string | null
+  credential_profile_id: string
+  credential_references?: Record<string, string>
+  allowed_fallback_transports?: string[]
   metadata: Record<string, unknown>
 }
 
@@ -121,6 +129,11 @@ export interface DiscoveryTargetResponse {
   tenant_id: string
   identifier: string
   address: string
+  vendor: string | null
+  scope_type: 'single_device' | 'ip_range' | 'cidr_network'
+  scope_end: string | null
+  scope_cidr: string | null
+  credential_profile_id: string | null
   platform_hint: string | null
   preferred_transport: string | null
   enabled: boolean

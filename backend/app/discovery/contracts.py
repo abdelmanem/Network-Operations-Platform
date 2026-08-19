@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from ipaddress import ip_address, ip_network
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -58,6 +59,47 @@ class DiscoveryFailureCode(StrEnum):
     EVIDENCE_PERSISTENCE_FAILED = "EVIDENCE_PERSISTENCE_FAILED"
     SNAPSHOT_PERSISTENCE_FAILED = "SNAPSHOT_PERSISTENCE_FAILED"
     CANCELLED = "CANCELLED"
+
+
+class DiscoveryScopeType(StrEnum):
+    """Supported discovery scope boundaries."""
+
+    SINGLE_DEVICE = "single_device"
+    IP_RANGE = "ip_range"
+    CIDR_NETWORK = "cidr_network"
+    DEVICE_GROUP = "device_group"
+    NETBOX_SCOPE = "netbox_scope"
+
+
+def validate_scope(
+    scope_type: DiscoveryScopeType,
+    *,
+    address: str | None = None,
+    scope_end: str | None = None,
+    scope_cidr: str | None = None,
+) -> None:
+    """Validate MVP single-device, range, and CIDR scope data."""
+
+    if scope_type == DiscoveryScopeType.SINGLE_DEVICE:
+        if not address:
+            raise ValueError("A single-device scope requires an address.")
+        ip_address(address)
+    elif scope_type == DiscoveryScopeType.IP_RANGE:
+        if not address or not scope_end:
+            raise ValueError("An IP range requires start and end addresses.")
+        start = ip_address(address)
+        end = ip_address(scope_end)
+        if start.version != end.version or int(start) > int(end):
+            raise ValueError("IP range boundaries are invalid.")
+    elif scope_type == DiscoveryScopeType.CIDR_NETWORK:
+        if not scope_cidr:
+            raise ValueError("A CIDR scope requires a network.")
+        ip_network(scope_cidr, strict=False)
+    elif scope_type in {
+        DiscoveryScopeType.DEVICE_GROUP,
+        DiscoveryScopeType.NETBOX_SCOPE,
+    }:
+        raise ValueError("This discovery scope is reserved for a future phase.")
 
 
 @dataclass(frozen=True, slots=True)

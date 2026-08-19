@@ -120,12 +120,20 @@ class DiscoveryTargetRecord(BaseModel):
     tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(512), nullable=False)
+    scope_type: Mapped[str] = mapped_column(
+        String(32), default="single_device", nullable=False, index=True
+    )
+    scope_end: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    scope_cidr: Mapped[str | None] = mapped_column(String(512), nullable=True)
     vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     platform_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
     preferred_transport: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     credential_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    credential_profile_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     credential_references: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=dict, nullable=False
     )

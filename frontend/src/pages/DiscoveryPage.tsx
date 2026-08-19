@@ -29,9 +29,13 @@ export function DiscoveryPage() {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [targetForm, setTargetForm] = useState({
+    scope_type: 'single_device' as
+      'single_device' | 'ip_range' | 'cidr_network',
     identifier: '',
     address: '',
-    credential_reference: '',
+    scope_end: '',
+    scope_cidr: '',
+    credential_profile_id: '',
     platform_hint: 'cisco-iosxe',
     preferred_transport: 'netmiko',
   })
@@ -84,16 +88,29 @@ export function DiscoveryPage() {
       const tenantId = window.localStorage.getItem('tenant-id') || 'default'
       const created = await createDiscoveryTarget({
         ...targetForm,
+        address:
+          targetForm.scope_type === 'cidr_network' ? null : targetForm.address,
+        scope_end:
+          targetForm.scope_type === 'ip_range' ? targetForm.scope_end : null,
+        scope_cidr:
+          targetForm.scope_type === 'cidr_network'
+            ? targetForm.scope_cidr
+            : null,
         tenant_id: tenantId,
         enabled: true,
+        credential_references: {},
+        allowed_fallback_transports: ['snmp', 'http'],
         metadata: {},
       })
       setTargets((current) => [created, ...current])
       setSelectedTargetId(created.target_id)
       setTargetForm({
+        scope_type: 'single_device',
         identifier: '',
         address: '',
-        credential_reference: '',
+        scope_end: '',
+        scope_cidr: '',
+        credential_profile_id: '',
         platform_hint: 'cisco-iosxe',
         preferred_transport: 'netmiko',
       })
@@ -182,6 +199,30 @@ export function DiscoveryPage() {
 
         <form className="card" onSubmit={handleCreateTarget}>
           <h3>Add target</h3>
+          <fieldset>
+            <legend>Discovery scope</legend>
+            {[
+              ['single_device', 'Single Device'],
+              ['ip_range', 'IP Range'],
+              ['cidr_network', 'CIDR Network'],
+            ].map(([value, label]) => (
+              <label key={value}>
+                <input
+                  type="radio"
+                  name="scope_type"
+                  value={value}
+                  checked={targetForm.scope_type === value}
+                  onChange={() =>
+                    setTargetForm({
+                      ...targetForm,
+                      scope_type: value as typeof targetForm.scope_type,
+                    })
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
           <label>
             Target name
             <input
@@ -192,26 +233,61 @@ export function DiscoveryPage() {
               }
             />
           </label>
+          {targetForm.scope_type !== 'cidr_network' ? (
+            <label>
+              {targetForm.scope_type === 'ip_range'
+                ? 'Start IP'
+                : 'Management address'}
+              <input
+                value={targetForm.address}
+                required
+                onChange={(event) =>
+                  setTargetForm({ ...targetForm, address: event.target.value })
+                }
+              />
+            </label>
+          ) : null}
+          {targetForm.scope_type === 'ip_range' ? (
+            <label>
+              End IP
+              <input
+                value={targetForm.scope_end}
+                required
+                onChange={(event) =>
+                  setTargetForm({
+                    ...targetForm,
+                    scope_end: event.target.value,
+                  })
+                }
+              />
+            </label>
+          ) : null}
+          {targetForm.scope_type === 'cidr_network' ? (
+            <label>
+              CIDR network
+              <input
+                value={targetForm.scope_cidr}
+                required
+                placeholder="10.10.20.0/24"
+                onChange={(event) =>
+                  setTargetForm({
+                    ...targetForm,
+                    scope_cidr: event.target.value,
+                  })
+                }
+              />
+            </label>
+          ) : null}
           <label>
-            Address
+            Credential profile ID
             <input
-              value={targetForm.address}
+              value={targetForm.credential_profile_id}
               required
-              onChange={(event) =>
-                setTargetForm({ ...targetForm, address: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Credential reference
-            <input
-              value={targetForm.credential_reference}
-              required
-              placeholder="credential:network:cisco-prod"
+              placeholder="credential-profile:cisco-production"
               onChange={(event) =>
                 setTargetForm({
                   ...targetForm,
-                  credential_reference: event.target.value,
+                  credential_profile_id: event.target.value,
                 })
               }
             />
@@ -274,6 +350,30 @@ export function DiscoveryPage() {
             {job.error_code ? <strong>{job.error_code}</strong> : null}
           </div>
         ) : null}
+      </section>
+
+      <section className="card">
+        <h3>Discovery plan</h3>
+        <div className="run-status">
+          <span>
+            Scope:{' '}
+            <strong>{selectedTarget?.scope_type || 'Not configured'}</strong>
+          </span>
+          <span>
+            Devices:{' '}
+            <strong>{selectedTarget ? 'Configured scope' : '0'}</strong>
+          </span>
+          <span>Vendor: {selectedTarget?.vendor || 'Auto-detect'}</span>
+          <span>
+            Preferred transport:{' '}
+            {selectedTarget?.preferred_transport || 'Automatic'}
+          </span>
+          <span>
+            Credential profile:{' '}
+            {selectedTarget?.credential_profile_id || 'Not configured'}
+          </span>
+          <span>Telnet: Disabled by default</span>
+        </div>
       </section>
 
       {evidence.length > 0 ? (
