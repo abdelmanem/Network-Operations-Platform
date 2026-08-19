@@ -272,6 +272,38 @@ class DiscoveryJobRepository:
         self.session.flush()
         return self.get(tenant_id=tenant_id, job_id=job_id)  # type: ignore[return-value]
 
+    def record_selection(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        selected_transport: str | None,
+        selected_platform: str | None,
+    ) -> DiscoveryJobRecord:
+        """Persist execution selection metadata while a job is running."""
+
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            raise DiscoveryResourceNotFoundError("Discovery job was not found.")
+        if job.state != DiscoveryJobStatus.RUNNING.value:
+            raise InvalidDiscoveryTransitionError(
+                "Selection metadata requires a running discovery job."
+            )
+        self.session.execute(
+            update(DiscoveryJobRecord)
+            .where(
+                DiscoveryJobRecord.id == job_id,
+                DiscoveryJobRecord.tenant_id == tenant_id,
+            )
+            .values(
+                selected_transport=selected_transport,
+                selected_platform=selected_platform,
+                updated_at=_utc_now(),
+            )
+        )
+        self.session.flush()
+        return self.get(tenant_id=tenant_id, job_id=job_id)  # type: ignore[return-value]
+
     def mark_failed_after_rollback(
         self,
         *,
