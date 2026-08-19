@@ -9,13 +9,17 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     event,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,6 +69,9 @@ class DiscoveryRunRecord(ImmutableHistoryMixin, BaseModel):
 
     target_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     target_address: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(
         String(32),
         default=DiscoveryRunStatus.STARTED.value,
@@ -89,6 +96,160 @@ class DiscoveryRunRecord(ImmutableHistoryMixin, BaseModel):
         back_populates="discovery_run",
         cascade="all, delete-orphan",
     )
+    discovery_jobs: Mapped[list[DiscoveryJobRecord]] = relationship(
+        back_populates="discovery_run"
+    )
+    discovery_evidence: Mapped[list[DiscoveryEvidenceRecord]] = relationship(
+        back_populates="discovery_run"
+    )
+
+
+class DiscoveryTargetRecord(BaseModel):
+    """Mutable tenant-owned target configuration for discovery."""
+
+    __tablename__ = "discovery_targets"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "identifier", name="uq_discovery_targets_tenant_identifier"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    identifier: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[str] = mapped_column(String(512), nullable=False)
+    platform_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    preferred_transport: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    credential_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    created_by: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
+
+    jobs: Mapped[list[DiscoveryJobRecord]] = relationship(back_populates="target")
+    evidence: Mapped[list[DiscoveryEvidenceRecord]] = relationship(
+        back_populates="target"
+    )
+
+
+class DiscoveryJobRecord(BaseModel):
+    """Mutable durable lifecycle record for one discovery execution."""
+
+    __tablename__ = "discovery_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('queued', 'running', 'succeeded', 'failed', "
+            "'timed_out', 'cancelled')",
+            name="ck_discovery_jobs_state",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    target_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("discovery_targets.id"),
+        nullable=False,
+        index=True,
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("discovery_runs.id"), nullable=False, index=True
+    )
+    runtime_job_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    state: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
+    requested_capabilities: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    selected_transport: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    selected_platform: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    timeout_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    target: Mapped[DiscoveryTargetRecord] = relationship(back_populates="jobs")
+    discovery_run: Mapped[DiscoveryRunRecord] = relationship(
+        back_populates="discovery_jobs"
+    )
+    evidence: Mapped[list[DiscoveryEvidenceRecord]] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class DiscoveryEvidenceRecord(ImmutableHistoryMixin, BaseModel):
+    """Immutable raw discovery evidence record."""
+
+    __tablename__ = "discovery_evidence"
+
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    job_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("discovery_jobs.id"), nullable=False, index=True
+    )
+    target_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("discovery_targets.id"),
+        nullable=False,
+        index=True,
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("discovery_runs.id"), nullable=False, index=True
+    )
+    evidence_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    collector: Mapped[str] = mapped_column(String(255), nullable=False)
+    collector_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    command_or_probe: Mapped[str] = mapped_column(String(512), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    parser_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalization_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    job: Mapped[DiscoveryJobRecord] = relationship(back_populates="evidence")
+    target: Mapped[DiscoveryTargetRecord] = relationship(back_populates="evidence")
+    discovery_run: Mapped[DiscoveryRunRecord] = relationship(
+        back_populates="discovery_evidence"
+    )
+
+
+Index(
+    "uq_discovery_jobs_active_tenant_target",
+    DiscoveryJobRecord.tenant_id,
+    DiscoveryJobRecord.target_id,
+    unique=True,
+    postgresql_where=text("state IN ('queued', 'running')"),
+    sqlite_where=text("state IN ('queued', 'running')"),
+)
 
 
 class SnapshotRecord(ImmutableHistoryMixin, BaseModel):
@@ -339,6 +500,7 @@ class NetBoxSyncJobRecord(ImmutableHistoryMixin, BaseModel):
 
 _IMMUTABLE_MODELS = (
     DiscoveryRunRecord,
+    DiscoveryEvidenceRecord,
     SnapshotRecord,
     SnapshotDeviceRecord,
     SnapshotInterfaceRecord,

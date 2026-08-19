@@ -15,6 +15,7 @@ class DiscoveryTarget:
 
     identifier: str
     address: str
+    tenant_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
     capabilities: frozenset[CollectorCapability] = field(default_factory=frozenset)
 
