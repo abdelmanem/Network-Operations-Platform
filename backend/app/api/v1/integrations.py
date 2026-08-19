@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
+import uuid
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.orm import Session
 
@@ -111,9 +113,16 @@ async def run_netbox_sync_background(
         snapshot = await inventory_service.synchronize(force_refresh=True)
 
         # Persist the snapshot in PostgreSQL database using repo.add_netbox_snapshot
-        repo.add_netbox_snapshot(snapshot)
+        # Wrap in try/except to ensure atomicity: if add fails, rollback all pending changes
+        try:
+            repo.add_netbox_snapshot(snapshot)
+            db_session.commit()  # Commit snapshot atomically
+        except Exception as snapshot_exc:
+            logger.exception("Failed to persist NetBox snapshot")
+            db_session.rollback()  # Roll back pending snapshot records
+            raise snapshot_exc  # Re-raise to outer except handler
 
-        # Update sync job state to 'succeeded'
+        # Update sync job state to 'succeeded' in a separate transaction
         job.status = "succeeded"
         job.finished_at = datetime.now(UTC)
         db_session.commit()
@@ -132,10 +141,16 @@ async def run_netbox_sync_background(
         )
     except Exception as exc:
         logger.exception("NetBox sync background task failed")
-        job.status = "failed"
-        job.finished_at = datetime.now(UTC)
-        job.error_message = str(exc)
-        db_session.commit()
+        # At this point, if snapshot add failed, it was already rolled back.
+        # Now update job status to failed in a clean transaction.
+        try:
+            job.status = "failed"
+            job.finished_at = datetime.now(UTC)
+            job.error_message = str(exc)
+            db_session.commit()
+        except Exception as job_update_exc:  # pragma: no cover - defensive
+            logger.exception("Failed to update sync job to failed state")
+            db_session.rollback()
 
         # Log audit record
         audit_service.record_api_activity(
@@ -298,25 +313,53 @@ async def synchronize_inventory(
     repo = SnapshotRepository(db_session)
 
     from backend.app.persistence.models import NetBoxSyncJobRecord
+    from sqlalchemy import text
+    from sqlalchemy.pool import StaticPool
+    from sqlalchemy.exc import OperationalError
 
-    # Check if a job is already queued or running
-    active_job = (
-        db_session.query(NetBoxSyncJobRecord)
-        .filter(NetBoxSyncJobRecord.status.in_(["queued", "running"]))
-        .first()
-    )
-
-    if active_job is not None:
-        raise NetBoxIntegrationError(
-            status_code=status.HTTP_409_CONFLICT,
-            code="NETBOX_SYNC_ALREADY_RUNNING",
-            message="Another NetBox synchronization is already in progress.",
+    # Use database-level locking to prevent concurrent sync race condition.
+    # For PostgreSQL: Use advisory locks (pg_advisory_lock)
+    # For SQLite/testing: Use a simple status check
+    
+    NETBOX_SYNC_ADVISORY_LOCK_KEY = 42  # Arbitrary unique key for this lock
+    use_advisory_lock = False
+    
+    # Try PostgreSQL advisory lock first (will fail gracefully on SQLite)
+    try:
+        db_session.execute(text(f"SELECT pg_advisory_lock({NETBOX_SYNC_ADVISORY_LOCK_KEY})"))
+        use_advisory_lock = True
+    except OperationalError:
+        # SQLite doesn't support pg_advisory_lock, use simple status check instead
+        use_advisory_lock = False
+    
+    try:
+        # Check for active jobs (either under lock on PostgreSQL or directly on SQLite)
+        active_job = (
+            db_session.query(NetBoxSyncJobRecord)
+            .filter(NetBoxSyncJobRecord.status.in_(["queued", "running"]))
+            .first()
         )
 
-    # Create new sync job UUID and persist in PostgreSQL
-    job_id = uuid4()
-    repo.create_sync_job(job_id)
-    db_session.commit()
+        if active_job is not None:
+            raise NetBoxIntegrationError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="NETBOX_SYNC_ALREADY_RUNNING",
+                message="Another NetBox synchronization is already in progress.",
+            )
+
+        # Create new sync job UUID and persist
+        job_id = uuid4()
+        repo.create_sync_job(job_id)
+        db_session.commit()
+    finally:
+        # Release the advisory lock if we acquired it (PostgreSQL only)
+        if use_advisory_lock:
+            try:
+                db_session.execute(
+                    text(f"SELECT pg_advisory_unlock({NETBOX_SYNC_ADVISORY_LOCK_KEY})")
+                )
+            except OperationalError:
+                pass  # Ignore if unlock fails (e.g., no lock was held)
 
     # Log submitted audit record
     audit_service.record_api_activity(
