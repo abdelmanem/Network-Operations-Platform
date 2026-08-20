@@ -157,6 +157,27 @@ class DiscoveryTargetRecord(BaseModel):
     )
 
 
+class CredentialProfileRecord(BaseModel):
+    """Tenant-scoped metadata for an external credential profile."""
+
+    __tablename__ = "credential_profiles"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    credential_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    transport_types: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    provider_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    secret_status: Mapped[str] = mapped_column(String(32), default="configured", nullable=False)
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
 class DiscoveryJobRecord(BaseModel):
     """Mutable durable lifecycle record for one discovery execution."""
 
@@ -181,6 +202,9 @@ class DiscoveryJobRecord(BaseModel):
     )
     run_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("discovery_runs.id"), nullable=False, index=True
+    )
+    parent_job_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("discovery_jobs.id"), nullable=True, index=True
     )
     runtime_job_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), nullable=True
@@ -217,6 +241,73 @@ class DiscoveryJobRecord(BaseModel):
     evidence: Mapped[list[DiscoveryEvidenceRecord]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+    child_jobs: Mapped[list[DiscoveryJobRecord]] = relationship(
+        back_populates="parent_job", foreign_keys=[parent_job_id]
+    )
+    parent_job: Mapped[DiscoveryJobRecord | None] = relationship(
+        back_populates="child_jobs", remote_side=[id], foreign_keys=[parent_job_id]
+    )
+
+
+class DiscoveryDeviceResultRecord(BaseModel):
+    """Durable per-device outcome within a discovery job."""
+
+    __tablename__ = "discovery_device_results"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    discovery_job_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("discovery_jobs.id"), nullable=False, index=True
+    )
+    child_job_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("discovery_jobs.id"), nullable=False, unique=True
+    )
+    address: Mapped[str] = mapped_column(String(512), nullable=False)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    state: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    selected_transport: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class DiscoveryTransportAttemptRecord(BaseModel):
+    """Durable, secret-free record of one transport attempt."""
+
+    __tablename__ = "discovery_transport_attempts"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    device_result_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("discovery_device_results.id"),
+        nullable=False,
+        index=True,
+    )
+    transport: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempt_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    result: Mapped[str] = mapped_column(String(48), nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class DiscoveryEvidenceRecord(ImmutableHistoryMixin, BaseModel):

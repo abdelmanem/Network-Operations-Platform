@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from backend.app.api.v1.comparison import router as comparison_router
 from backend.app.api.v1.compliance import router as compliance_router
+from backend.app.api.v1.credentials import router as credentials_router
 from backend.app.api.v1.dashboard import router as dashboard_router
 from backend.app.api.v1.devices import router as devices_router
 from backend.app.api.v1.discovery import router as discovery_router
@@ -25,6 +26,7 @@ router.include_router(scheduler_router)
 router.include_router(history_router)
 router.include_router(findings_router)
 router.include_router(devices_router)
+router.include_router(credentials_router)
 router.include_router(discovery_router)
 router.include_router(comparison_router)
 router.include_router(compliance_router)

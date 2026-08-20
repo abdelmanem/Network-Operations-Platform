@@ -20,10 +20,12 @@ from backend.app.discovery.contracts import (
     transition_job,
 )
 from backend.app.persistence.models import (
+    CredentialProfileRecord,
     DiscoveryEvidenceRecord,
     DiscoveryJobRecord,
     DiscoveryRunRecord,
     DiscoveryTargetRecord,
+    DiscoveryTransportAttemptRecord,
 )
 
 
@@ -134,6 +136,85 @@ class DiscoveryTargetRepository:
         return tuple(self.session.scalars(statement).all())
 
 
+class CredentialProfileRepository:
+    """Tenant-scoped repository for secret-free credential profile metadata."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def create(
+        self,
+        *,
+        tenant_id: str,
+        name: str,
+        provider_reference: str,
+        transport_types: list[str],
+        description: str | None = None,
+        vendor: str | None = None,
+        platform: str | None = None,
+        credential_type: str | None = None,
+        username: str | None = None,
+    ) -> CredentialProfileRecord:
+        record = CredentialProfileRecord(
+            tenant_id=tenant_id,
+            name=name,
+            provider_reference=provider_reference,
+            transport_types=list(transport_types),
+            description=description,
+            vendor=vendor,
+            platform=platform,
+            credential_type=credential_type,
+            username=username,
+            secret_status="configured",
+            enabled=True,
+        )
+        self.session.add(record)
+        self.session.flush()
+        return record
+
+    def get(self, *, tenant_id: str, profile_id: UUID) -> CredentialProfileRecord | None:
+        statement = select(CredentialProfileRecord).where(
+            CredentialProfileRecord.id == profile_id,
+            CredentialProfileRecord.tenant_id == tenant_id,
+        )
+        return self.session.scalars(statement).first()
+
+    def update(
+        self,
+        *,
+        tenant_id: str,
+        profile_id: UUID,
+        **changes: Any,
+    ) -> CredentialProfileRecord:
+        record = self.get(tenant_id=tenant_id, profile_id=profile_id)
+        if record is None:
+            raise DiscoveryResourceNotFoundError("Credential profile was not found.")
+        for key, value in changes.items():
+            if value is not None:
+                setattr(record, key, value)
+        self.session.flush()
+        return record
+
+    def delete(self, *, tenant_id: str, profile_id: UUID) -> bool:
+        record = self.get(tenant_id=tenant_id, profile_id=profile_id)
+        if record is None:
+            return False
+        self.session.delete(record)
+        self.session.flush()
+        return True
+
+    def list(self, *, tenant_id: str) -> tuple[CredentialProfileRecord, ...]:
+        statement = (
+            select(CredentialProfileRecord)
+            .where(
+                CredentialProfileRecord.tenant_id == tenant_id,
+                CredentialProfileRecord.enabled.is_(True),
+            )
+            .order_by(CredentialProfileRecord.name.asc())
+        )
+        return tuple(self.session.scalars(statement).all())
+
+
 class DiscoveryJobRepository:
     """Tenant-scoped repository for durable discovery jobs."""
 
@@ -161,6 +242,7 @@ class DiscoveryJobRepository:
         tenant_id: str,
         target_id: UUID,
         run_id: UUID,
+        parent_job_id: UUID | None = None,
         created_by: UUID | None = None,
         requested_capabilities: dict[str, object] | None = None,
         timeout_seconds: float | None = None,
@@ -190,6 +272,7 @@ class DiscoveryJobRepository:
             tenant_id=tenant_id,
             target_id=target_id,
             run_id=run_id,
+            parent_job_id=parent_job_id,
             state=DiscoveryJobStatus.QUEUED.value,
             created_by=created_by,
             requested_capabilities=(
@@ -347,6 +430,53 @@ class DiscoveryJobRepository:
         )
 
 
+class DiscoveryTransportAttemptRepository:
+    """Persist secret-free transport attempt history."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def start(
+        self,
+        *,
+        tenant_id: str,
+        device_result_id: UUID,
+        transport: str,
+        attempt_order: int,
+        correlation_id: str | None = None,
+    ) -> DiscoveryTransportAttemptRecord:
+        record = DiscoveryTransportAttemptRecord(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            device_result_id=device_result_id,
+            transport=transport,
+            attempt_order=attempt_order,
+            result="running",
+            started_at=_utc_now(),
+            correlation_id=correlation_id,
+        )
+        self.session.add(record)
+        self.session.flush()
+        return record
+
+    def finish(
+        self,
+        record: DiscoveryTransportAttemptRecord,
+        *,
+        result: str,
+        failure_code: str | None = None,
+    ) -> DiscoveryTransportAttemptRecord:
+        completed_at = _utc_now()
+        record.result = result
+        record.failure_code = failure_code
+        record.completed_at = completed_at
+        record.duration_ms = max(
+            0, int((completed_at - record.started_at).total_seconds() * 1000)
+        )
+        self.session.flush()
+        return record
+
+
 class DiscoveryEvidenceRepository:
     """Tenant-scoped append-only repository for discovery evidence."""
 
@@ -425,6 +555,7 @@ class DiscoveryEvidenceRepository:
 
 
 __all__ = [
+    "CredentialProfileRepository",
     "DiscoveryEvidenceRepository",
     "DiscoveryJobRepository",
     "DiscoveryPersistenceError",

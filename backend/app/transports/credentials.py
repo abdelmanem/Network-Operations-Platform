@@ -102,6 +102,13 @@ class CredentialReference:
         }
 
 
+class SecretProvider(Protocol):
+    """Resolve a secret reference without exposing secret material in API DTOs."""
+
+    def resolve_secret(self, reference: str) -> str | None:
+        """Return a secret payload for the provided secret reference."""
+
+
 class CredentialProvider(Protocol):
     """Resolve an opaque reference only at execution time."""
 
@@ -109,6 +116,17 @@ class CredentialProvider(Protocol):
         self, reference: CredentialReference
     ) -> TransportCredentials | None:
         """Return ephemeral credentials without persisting or serializing secrets."""
+
+
+@dataclass(slots=True)
+class EnvironmentSecretProvider:
+    """Minimal secret provider for local and test environments."""
+
+    prefix: str = "NOP_SECRET_"
+
+    def resolve_secret(self, reference: str) -> str | None:
+        key = re.sub(r"[^A-Za-z0-9_\-]", "_", reference).upper()
+        return os.getenv(f"{self.prefix}{key}")
 
 
 @dataclass(slots=True)

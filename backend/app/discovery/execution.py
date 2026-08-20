@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.collectors.base import BaseCollector
@@ -25,9 +26,15 @@ from backend.app.persistence.discovery_repositories import (
     DiscoveryJobRepository,
     DiscoveryPersistenceError,
     DiscoveryResourceNotFoundError,
+    DiscoveryTransportAttemptRepository,
     InvalidDiscoveryTransitionError,
 )
-from backend.app.persistence.models import DiscoveryJobRecord, DiscoveryTargetRecord
+from backend.app.persistence.models import (
+    DiscoveryDeviceResultRecord,
+    DiscoveryJobRecord,
+    DiscoveryTargetRecord,
+    DiscoveryTransportAttemptRecord,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +58,7 @@ class DiscoveryExecutionService:
         self.collector_registry = collector_registry
         self.jobs = DiscoveryJobRepository(session)
         self.evidence = DiscoveryEvidenceRepository(session)
+        self.attempts = DiscoveryTransportAttemptRepository(session)
 
     async def execute(
         self,
@@ -60,6 +68,7 @@ class DiscoveryExecutionService:
     ) -> DiscoveryExecutionOutcome:
         """Claim and execute one durable discovery job."""
 
+        attempt: DiscoveryTransportAttemptRecord | None = None
         try:
             job = self.jobs.claim(tenant_id=tenant_id, job_id=job_id)
             self.session.commit()
@@ -81,8 +90,14 @@ class DiscoveryExecutionService:
                 )
 
             collector, context = self._resolve_collector(job, target)
+            attempt = self._start_transport_attempt(job, target)
             await collector.health_check(context)
             raw_payload = await self._collect(collector, context)
+            if attempt is not None:
+                self.attempts.finish(
+                    attempt,
+                    result="success",
+                )
             self.jobs.record_selection(
                 tenant_id=tenant_id,
                 job_id=job.id,
@@ -111,6 +126,12 @@ class DiscoveryExecutionService:
         except Exception as exc:
             failure_code = self._failure_code(exc)
             failure_message = self._safe_failure_message(exc)
+            if attempt is not None:
+                self.attempts.finish(
+                    attempt,
+                    result="failed",
+                    failure_code=failure_code.value,
+                )
             try:
                 failed = self.jobs.mark_failed_after_rollback(
                     tenant_id=tenant_id,
@@ -123,6 +144,26 @@ class DiscoveryExecutionService:
                 self.session.rollback()
                 raise
             return DiscoveryExecutionOutcome(job=failed, executed=True)
+
+    def _start_transport_attempt(
+        self, job: DiscoveryJobRecord, target: DiscoveryTargetRecordView
+    ) -> DiscoveryTransportAttemptRecord | None:
+        result = self.session.scalar(
+            select(DiscoveryDeviceResultRecord).where(
+                DiscoveryDeviceResultRecord.child_job_id == job.id,
+                DiscoveryDeviceResultRecord.tenant_id == target.tenant_id,
+            )
+        )
+        if result is None:
+            return None
+        transport = str(target.metadata.get("transport_name", "unknown"))
+        return self.attempts.start(
+            tenant_id=target.tenant_id,
+            device_result_id=result.id,
+            transport=transport,
+            attempt_order=1,
+            correlation_id=job.correlation_id,
+        )
 
     def _resolve_target(
         self, job: DiscoveryJobRecord, tenant_id: str

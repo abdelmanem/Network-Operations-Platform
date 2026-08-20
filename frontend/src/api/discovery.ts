@@ -1,7 +1,10 @@
 import type {
+  CredentialProfileRequest,
+  CredentialProfileResponse,
   DiscoveryApiJobRequest,
   DiscoveryApiJobResponse,
   DiscoveryEvidenceResponse,
+  DiscoveryDeviceResultResponse,
   DiscoveryJobRequest,
   DiscoveryJobSubmissionResponse,
   DiscoveryRunListResponse,
@@ -62,6 +65,33 @@ export async function createDiscoveryTarget(
   }
 }
 
+export async function listDiscoveryCredentialProfiles(): Promise<
+  CredentialProfileResponse[]
+> {
+  try {
+    const response = await api.get<CredentialProfileResponse[]>(
+      '/api/v1/credentials/profiles',
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function createDiscoveryCredentialProfile(
+  payload: CredentialProfileRequest,
+): Promise<CredentialProfileResponse> {
+  try {
+    const response = await api.post<CredentialProfileResponse>(
+      '/api/v1/credentials/profiles',
+      payload,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
 export async function createDiscoveryApiJob(
   payload: DiscoveryApiJobRequest,
 ): Promise<DiscoveryApiJobResponse> {
@@ -95,6 +125,19 @@ export async function getDiscoveryEvidence(
   try {
     const response = await api.get<DiscoveryEvidenceResponse[]>(
       `/api/v1/discovery/jobs/${jobId}/evidence`,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function getDiscoveryDeviceResults(
+  jobId: string,
+): Promise<DiscoveryDeviceResultResponse[]> {
+  try {
+    const response = await api.get<DiscoveryDeviceResultResponse[]>(
+      `/api/v1/discovery/jobs/${jobId}/devices`,
     )
     return response.data
   } catch (error) {

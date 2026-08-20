@@ -46,6 +46,9 @@ class RoleRepository(ABC):
 
 class PermissionRepository(ABC):
     @abstractmethod
+    def get_by_name(self, name: str) -> Permission | None: ...
+
+    @abstractmethod
     def create(self, *, name: str, description: str = "") -> Permission: ...
 
 
@@ -192,6 +195,16 @@ class SQLAlchemyRoleRepository(RoleRepository):
 class SQLAlchemyPermissionRepository(PermissionRepository):
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def get_by_name(self, name: str) -> Permission | None:
+        row = (
+            self.session.query(AuthPermission)
+            .filter(AuthPermission.name == name)
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        return Permission(id=row.id, name=row.name, description=row.description)
 
     def create(self, *, name: str, description: str = "") -> Permission:
         row = AuthPermission(name=name, description=description)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Annotated, cast
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.api.v1.dependencies import get_application_container, get_db_session
@@ -13,25 +14,34 @@ from backend.app.auth.api.dependencies import require_permission
 from backend.app.auth.domain.models import User
 from backend.app.collectors.registry import CollectorRegistry
 from backend.app.database.session import SessionLocal
+from backend.app.discovery.contracts import DiscoveryJobStatus
 from backend.app.discovery.execution import DiscoveryExecutionService
+from backend.app.discovery.fanout import DiscoveryFanoutService
 from backend.app.persistence.discovery_repositories import (
+    CredentialProfileRepository,
     DiscoveryEvidenceRepository,
     DiscoveryJobRepository,
     DiscoveryPersistenceError,
     DiscoveryTargetRepository,
 )
 from backend.app.persistence.models import (
+    DiscoveryDeviceResultRecord,
     DiscoveryEvidenceRecord,
     DiscoveryJobRecord,
     DiscoveryRunRecord,
     DiscoveryTargetRecord,
+    DiscoveryTransportAttemptRecord,
 )
 from backend.app.schemas.discovery import (
+    CredentialProfileRequest,
+    CredentialProfileResponse,
+    DiscoveryDeviceResultResponse,
     DiscoveryEvidenceResponse,
     DiscoveryJobRequest,
     DiscoveryJobResponse,
     DiscoveryTargetRequest,
     DiscoveryTargetResponse,
+    DiscoveryTransportAttemptResponse,
 )
 
 if TYPE_CHECKING:
@@ -96,6 +106,45 @@ def list_targets(
         _target_response(record)
         for record in DiscoveryTargetRepository(db_session).list(tenant_id=tenant_id)
     ]
+
+
+@router.get(
+    "/credential-profiles",
+    response_model=list[CredentialProfileResponse],
+    summary="List credential profiles",
+)
+def list_credential_profiles(
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:target:read"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> list[CredentialProfileResponse]:
+    return [
+        _credential_profile_response(record)
+        for record in CredentialProfileRepository(db_session).list(tenant_id=tenant_id)
+    ]
+
+
+@router.post(
+    "/credential-profiles",
+    response_model=CredentialProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a credential profile",
+)
+def create_credential_profile(
+    payload: CredentialProfileRequest,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:target:write"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> CredentialProfileResponse:
+    record = CredentialProfileRepository(db_session).create(
+        tenant_id=tenant_id,
+        name=payload.name,
+        provider_reference=payload.provider_reference,
+        transport_types=payload.transport_types,
+        description=payload.description,
+    )
+    db_session.commit()
+    return _credential_profile_response(record)
 
 
 @router.post(
@@ -209,6 +258,84 @@ def get_job_evidence(
     ]
 
 
+@router.get(
+    "/jobs/{job_id}/devices",
+    response_model=list[DiscoveryDeviceResultResponse],
+    summary="List per-device discovery results",
+)
+def get_job_devices(
+    job_id: UUID,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:job:read"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> list[DiscoveryDeviceResultResponse]:
+    if (
+        DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Discovery job was not found.")
+    records = db_session.scalars(
+        select(DiscoveryDeviceResultRecord).where(
+            DiscoveryDeviceResultRecord.tenant_id == tenant_id,
+            DiscoveryDeviceResultRecord.discovery_job_id == job_id,
+        )
+    ).all()
+    return [
+        DiscoveryDeviceResultResponse.model_validate(
+            {
+                "result_id": record.id,
+                "address": record.address,
+                "hostname": record.hostname,
+                "vendor": record.vendor,
+                "platform": record.platform,
+                "state": record.state,
+                "selected_transport": record.selected_transport,
+                "failure_code": record.failure_code,
+                "failure_message": record.failure_message,
+                "started_at": record.started_at,
+                "completed_at": record.completed_at,
+                "correlation_id": record.correlation_id,
+            }
+        )
+        for record in records
+    ]
+
+
+@router.get(
+    "/devices/{result_id}/attempts",
+    response_model=list[DiscoveryTransportAttemptResponse],
+    summary="List transport attempts for a discovered device",
+)
+def get_device_attempts(
+    result_id: UUID,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:job:read"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> list[DiscoveryTransportAttemptResponse]:
+    records = db_session.scalars(
+        select(DiscoveryTransportAttemptRecord).where(
+            DiscoveryTransportAttemptRecord.device_result_id == result_id,
+            DiscoveryTransportAttemptRecord.tenant_id == tenant_id,
+        )
+    ).all()
+    return [
+        DiscoveryTransportAttemptResponse.model_validate(
+            {
+                "attempt_id": record.id,
+                "transport": record.transport,
+                "attempt_order": record.attempt_order,
+                "result": record.result,
+                "failure_code": record.failure_code,
+                "duration_ms": record.duration_ms,
+                "started_at": record.started_at,
+                "completed_at": record.completed_at,
+                "correlation_id": record.correlation_id,
+            }
+        )
+        for record in records
+    ]
+
+
 async def _execute_job(
     tenant_id: str,
     job_id: UUID,
@@ -216,8 +343,30 @@ async def _execute_job(
 ) -> None:
     db_session = SessionLocal()
     try:
-        service = DiscoveryExecutionService(db_session, collector_registry)
-        await service.execute(tenant_id=tenant_id, job_id=job_id)
+        job = DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            return
+        target = DiscoveryTargetRepository(db_session).get(
+            tenant_id=tenant_id, target_id=job.target_id
+        )
+        if target is not None and target.scope_type in {"ip_range", "cidr_network"}:
+            DiscoveryJobRepository(db_session).claim(tenant_id=tenant_id, job_id=job_id)
+            db_session.commit()
+            results = await DiscoveryFanoutService(
+                db_session, collector_registry, concurrency=10
+            ).execute(tenant_id=tenant_id, parent_job_id=job_id)
+            final_state = (
+                DiscoveryJobStatus.SUCCEEDED
+                if any(result.state == "succeeded" for result in results)
+                else DiscoveryJobStatus.FAILED
+            )
+            DiscoveryJobRepository(db_session).transition(
+                tenant_id=tenant_id, job_id=job_id, target_state=final_state
+            )
+            db_session.commit()
+        else:
+            service = DiscoveryExecutionService(db_session, collector_registry)
+            await service.execute(tenant_id=tenant_id, job_id=job_id)
     finally:
         db_session.close()
 
@@ -270,6 +419,24 @@ def _job_response(record: DiscoveryJobRecord) -> DiscoveryJobResponse:
             "finished_at": record.completed_at,
             "timeout_seconds": record.timeout_seconds,
             "correlation_id": record.correlation_id,
+        }
+    )
+
+
+def _credential_profile_response(
+    record: object,
+) -> CredentialProfileResponse:
+    return CredentialProfileResponse.model_validate(
+        {
+            "profile_id": record.id,
+            "tenant_id": record.tenant_id,
+            "name": record.name,
+            "description": record.description,
+            "transport_types": list(record.transport_types),
+            "provider_reference": record.provider_reference,
+            "enabled": record.enabled,
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
         }
     )
 

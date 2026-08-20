@@ -116,6 +116,111 @@ class DiscoveryTargetResponse(BaseModel):
     updated_at: datetime
 
 
+class CredentialProfileRequest(BaseModel):
+    """Create a tenant-scoped credential profile reference."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=1024)
+    vendor: str | None = Field(default=None, max_length=128)
+    platform: str | None = Field(default=None, max_length=128)
+    credential_type: str | None = Field(default=None, max_length=64)
+    username: str | None = Field(default=None, max_length=255)
+    transport_types: list[str] = Field(default_factory=list)
+    provider_reference: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def reject_blank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Name cannot be blank.")
+        return value
+
+    @field_validator("transport_types")
+    @classmethod
+    def validate_transport_types(cls, value: list[str]) -> list[str]:
+        supported = {
+            "ssh",
+            "snmp",
+            "snmpv2c",
+            "snmpv3",
+            "telnet",
+            "https",
+            "http",
+            "icmp",
+        }
+        cleaned = [str(item).strip().lower() for item in value]
+        if not cleaned:
+            raise ValueError("At least one transport type is required.")
+        if any(item not in supported for item in cleaned):
+            raise ValueError("Unsupported transport type.")
+        return list(dict.fromkeys(cleaned))
+
+
+class CredentialProfileUpdateRequest(BaseModel):
+    """Update a tenant-scoped credential profile without exposing secret material."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=1024)
+    vendor: str | None = Field(default=None, max_length=128)
+    platform: str | None = Field(default=None, max_length=128)
+    credential_type: str | None = Field(default=None, max_length=64)
+    username: str | None = Field(default=None, max_length=255)
+    transport_types: list[str] | None = Field(default=None)
+    enabled: bool | None = None
+
+
+class CredentialProfileResponse(BaseModel):
+    """Secret-free credential profile metadata returned to the UI."""
+
+    profile_id: UUID
+    tenant_id: str
+    name: str
+    description: str | None = None
+    vendor: str | None = None
+    platform: str | None = None
+    credential_type: str | None = None
+    username: str | None = None
+    transport_types: list[str] = Field(default_factory=list)
+    provider_reference: str
+    secret_status: str = "configured"
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class CredentialProfileTestRequest(BaseModel):
+    """Validate a credential profile against a target transport at runtime."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    transport: str = Field(min_length=1, max_length=64)
+    target: str = Field(min_length=1, max_length=512)
+
+    @field_validator("transport")
+    @classmethod
+    def validate_transport(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        supported = {"ssh", "snmp", "telnet", "http", "https", "icmp"}
+        if cleaned not in supported:
+            raise ValueError("Unsupported transport for credential validation.")
+        return cleaned
+
+
+class CredentialProfileTestResponse(BaseModel):
+    """Sanitized execution-time credential validation result."""
+
+    status: str
+    transport: str
+    target: str
+    credential_type: str | None = None
+    message: str
+    provider_reference: str | None = None
+
+
 class DiscoveryJobRequest(BaseModel):
     """Request to execute discovery for an existing target."""
 
@@ -178,6 +283,37 @@ class DiscoveryEvidenceResponse(BaseModel):
     parser_version: str | None = None
     normalization_version: str | None = None
     content_hash: str
+
+
+class DiscoveryDeviceResultResponse(BaseModel):
+    """Per-device result shown for a scoped discovery job."""
+
+    result_id: UUID
+    address: str
+    hostname: str | None = None
+    vendor: str | None = None
+    platform: str | None = None
+    state: str
+    selected_transport: str | None = None
+    failure_code: str | None = None
+    failure_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    correlation_id: str | None = None
+
+
+class DiscoveryTransportAttemptResponse(BaseModel):
+    """Secret-free transport attempt history."""
+
+    attempt_id: UUID
+    transport: str
+    attempt_order: int
+    result: str
+    failure_code: str | None = None
+    duration_ms: int | None = None
+    started_at: datetime
+    completed_at: datetime | None = None
+    correlation_id: str | None = None
 
 
 class DiscoveryRunSummary(BaseModel):

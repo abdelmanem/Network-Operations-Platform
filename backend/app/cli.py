@@ -23,6 +23,34 @@ from backend.app.database.session import SessionLocal, initialize_database
 
 DEFAULT_ADMIN_ROLE_NAME = "admin"
 MIN_PASSWORD_LENGTH = 8
+DEFAULT_ADMIN_PERMISSIONS = (
+    "credential:read",
+    "credential:write",
+    "discovery:target:read",
+    "discovery:target:write",
+    "discovery:job:submit",
+    "discovery:job:read",
+    "discovery:evidence:read",
+    "inventory:read",
+    "inventory:write",
+)
+
+
+def _ensure_admin_permissions(session: Session, *, role_name: str) -> None:
+    role_repo = SQLAlchemyRoleRepository(session)
+    permission_repo = SQLAlchemyPermissionRepository(session)
+    role = role_repo.get_by_name(role_name)
+    if role is None:
+        role = role_repo.create(name=role_name, description="Administrator role")
+
+    for permission_name in DEFAULT_ADMIN_PERMISSIONS:
+        permission = permission_repo.get_by_name(permission_name)
+        if permission is None:
+            permission = permission_repo.create(
+                name=permission_name,
+                description=f"Administrative access: {permission_name}",
+            )
+        role_repo.add_permission(role, permission)
 
 
 def provision_admin_user(
@@ -56,6 +84,8 @@ def provision_admin_user(
             name=role_name,
             description="Administrator role",
         )
+    _ensure_admin_permissions(session, role_name=role_name)
+    existing_role = role_repo.get_by_name(role_name)
 
     user_repo = SQLAlchemyUserRepository(session)
     auth_service = AuthenticationService(

@@ -141,6 +141,29 @@ export interface DiscoveryTargetResponse {
   updated_at: string
 }
 
+export interface CredentialProfileRequest {
+  name: string
+  description?: string | null
+  vendor?: string | null
+  platform?: string | null
+  credential_type?: string | null
+  username?: string | null
+  transport_types: string[]
+  provider_reference: string
+}
+
+export interface CredentialProfileResponse {
+  profile_id: string
+  tenant_id: string
+  name: string
+  description: string | null
+  transport_types: string[]
+  provider_reference: string
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface DiscoveryApiJobRequest {
   target_id: string
   requested_capabilities: Record<string, unknown>
@@ -186,6 +209,21 @@ export interface DiscoveryEvidenceResponse {
   parser_version: string | null
   normalization_version: string | null
   content_hash: string
+}
+
+export interface DiscoveryDeviceResultResponse {
+  result_id: string
+  address: string
+  hostname: string | null
+  vendor: string | null
+  platform: string | null
+  state: string
+  selected_transport: string | null
+  failure_code: string | null
+  failure_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  correlation_id: string | null
 }
 
 export interface JobStatusResponse {

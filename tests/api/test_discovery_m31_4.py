@@ -20,6 +20,14 @@ def test_discovery_root_is_available_without_authentication() -> None:
     assert response.json() == {"status": "available"}
 
 
+def test_discovery_credential_profile_routes_are_registered_in_openapi() -> None:
+    app = create_application()
+    paths = app.openapi()["paths"]
+
+    assert "/api/v1/credentials/profiles" in paths
+    assert "/api/v1/credentials/profiles/{profile_id}/test" in paths
+
+
 def test_discovery_job_requires_authentication() -> None:
     with TestClient(create_application()) as client:
         response = client.get(
