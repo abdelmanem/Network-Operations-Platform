@@ -11,6 +11,7 @@ from backend.app.discovery.contracts import (
     transition_job,
     validate_scope,
 )
+from backend.app.discovery.scopes import DiscoveryScope, DiscoveryScopeError
 from backend.app.transports.base import TransportCapability
 
 
@@ -76,6 +77,25 @@ def test_scope_validation_supports_single_device_range_and_cidr() -> None:
             address="10.0.0.10",
             scope_end="10.0.0.1",
         )
+
+
+def test_scope_expansion_is_bounded_for_single_range_and_cidr() -> None:
+    assert DiscoveryScope(
+        DiscoveryScopeType.SINGLE_DEVICE, address="10.0.0.1"
+    ).expand() == ("10.0.0.1",)
+    assert DiscoveryScope(
+        DiscoveryScopeType.IP_RANGE,
+        address="10.0.0.1",
+        scope_end="10.0.0.3",
+    ).expand() == ("10.0.0.1", "10.0.0.2", "10.0.0.3")
+    assert DiscoveryScope(
+        DiscoveryScopeType.CIDR_NETWORK, scope_cidr="192.0.2.0/30"
+    ).expand() == ("192.0.2.1", "192.0.2.2")
+
+    with pytest.raises(DiscoveryScopeError, match="target limit"):
+        DiscoveryScope(
+            DiscoveryScopeType.CIDR_NETWORK, scope_cidr="10.0.0.0/24"
+        ).expand(max_targets=10)
 
 
 def test_evidence_is_traceable_and_hashable() -> None:

@@ -139,6 +139,7 @@ class DiscoveryExecutionService:
         if target.preferred_transport is not None:
             metadata.setdefault("transport_name", target.preferred_transport)
         metadata["credential_reference"] = target.credential_reference
+        metadata["credential_profile_id"] = target.credential_profile_id
         return DiscoveryTargetRecordView(
             id=target.id,
             tenant_id=target.tenant_id,

@@ -18,6 +18,7 @@ from backend.app.parsers.context import ParserContext, ParserInputFormat
 from backend.app.parsers.result import ParserResult
 from backend.app.snapshot.entities import InventorySnapshot
 from backend.app.transports.base import TransportCapability, TransportTarget
+from backend.app.transports.credentials import CredentialReference
 from backend.app.transports.manager import TransportManager
 from backend.app.vendors.cisco.capabilities import CiscoCapability
 from backend.app.vendors.cisco.catalog.commands import CommandCategory
@@ -193,6 +194,7 @@ class CiscoInventoryCollectorBase(BaseCollector):
             identifier=context.target.identifier,
             address=context.target.address,
             metadata=dict(context.target.metadata),
+            credential_reference=self._credential_reference(context),
         )
         session = await self.transport_manager.open_session(
             selection.transport_name,
@@ -230,6 +232,20 @@ class CiscoInventoryCollectorBase(BaseCollector):
                 f"Unsupported transport capability: {selection.capability}"
             )
         return payload
+
+    @staticmethod
+    def _credential_reference(context: CollectorContext) -> CredentialReference | None:
+        reference = context.target.metadata.get("credential_profile_id")
+        if reference is None:
+            reference = context.target.metadata.get("credential_reference")
+        tenant_id = context.target.tenant_id
+        if reference is None or tenant_id is None:
+            return None
+        return CredentialReference(
+            credential_id=str(reference),
+            transport=str(context.metadata.get("transport_name", "ssh")),
+            tenant_id=tenant_id,
+        )
 
     async def normalize(
         self,

@@ -15,6 +15,7 @@ from backend.app.transports._support import (
     retry_async,
 )
 from backend.app.transports.base import TransportContext
+from backend.app.transports.credentials import SNMPv2cCredentials
 from backend.app.transports.exceptions import (
     TransportConfigurationError,
     TransportHealthCheckError,
@@ -159,7 +160,11 @@ class PySnmpTransport(SNMPTransport):
     def create_session(self, context: TransportContext) -> PySnmpSession:
         """Create a pysnmp session."""
 
-        community = metadata_optional_string(context.metadata, "community")
+        community = None
+        if isinstance(context.credentials, SNMPv2cCredentials):
+            community = context.credentials.community
+        if community is None:
+            community = metadata_optional_string(context.metadata, "community")
         if community is None:
             community = self.default_community
         port = metadata_int(context.metadata, "port", self.default_port)

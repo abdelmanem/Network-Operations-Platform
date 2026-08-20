@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
@@ -39,6 +41,42 @@ class TokenCredentials:
         return {"Authorization": f"{self.scheme} {self.token}"}
 
 
+@dataclass(frozen=True, slots=True)
+class SNMPv2cCredentials:
+    """SNMPv2c community credentials."""
+
+    community: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"community": self.community}
+
+
+@dataclass(frozen=True, slots=True)
+class SNMPv3Credentials:
+    """SNMPv3 authentication and privacy credentials."""
+
+    username: str
+    security_level: str
+    auth_protocol: str | None = None
+    auth_secret: str | None = None
+    privacy_protocol: str | None = None
+    privacy_secret: str | None = None
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in {
+                "username": self.username,
+                "security_level": self.security_level,
+                "auth_protocol": self.auth_protocol,
+                "auth_secret": self.auth_secret,
+                "privacy_protocol": self.privacy_protocol,
+                "privacy_secret": self.privacy_secret,
+            }.items()
+            if value is not None
+        }
+
+
 class CredentialResolver(Protocol):
     """Protocol for resolving transport credentials."""
 
@@ -71,6 +109,28 @@ class CredentialProvider(Protocol):
         self, reference: CredentialReference
     ) -> TransportCredentials | None:
         """Return ephemeral credentials without persisting or serializing secrets."""
+
+
+@dataclass(slots=True)
+class EnvironmentCredentialProvider:
+    """Resolve opaque profile IDs from environment variables at execution time."""
+
+    prefix: str = "NOP_CREDENTIAL_"
+
+    def resolve_reference(
+        self, reference: CredentialReference
+    ) -> TransportCredentials | None:
+        key = re.sub(r"[^A-Za-z0-9]", "_", str(reference.credential_id)).upper()
+        transport = reference.transport.upper().replace("-", "_")
+        value = os.getenv(f"{self.prefix}{key}_{transport}")
+        if value is None:
+            return None
+        if transport in {"SNMP", "SNMPV2C"}:
+            return SNMPv2cCredentials(community=value)
+        username = os.getenv(f"{self.prefix}{key}_USERNAME")
+        if username is None:
+            return None
+        return UsernamePasswordCredentials(username=username, password=value)
 
 
 @dataclass(slots=True)

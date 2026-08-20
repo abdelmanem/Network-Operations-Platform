@@ -58,6 +58,7 @@ from backend.app.scheduler.registry import WorkerRegistry
 from backend.app.services.base import ServiceContext
 from backend.app.services.inventory import InventoryService
 from backend.app.snapshot.models import InventorySnapshotModel
+from backend.app.transports.credentials import EnvironmentCredentialProvider
 from backend.app.transports.http.httpx import HttpxTransport
 from backend.app.transports.manager import TransportManager
 from backend.app.transports.snmp.pysnmp import PySnmpTransport
@@ -122,7 +123,9 @@ def _build_runtime_services(
         cache=build_cache_backend(settings.redis_url),
     )
 
-    transport_manager = TransportManager()
+    transport_manager = TransportManager(
+        credential_provider=EnvironmentCredentialProvider()
+    )
     for transport in (
         NetmikoSSHTransport(),
         ParamikoSSHTransport(),
