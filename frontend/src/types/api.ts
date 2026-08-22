@@ -164,6 +164,20 @@ export interface CredentialProfileResponse {
   updated_at: string
 }
 
+export interface CredentialProfileTestRequest {
+  transport: string
+  target: string
+}
+
+export interface CredentialProfileTestResponse {
+  status: string
+  transport: string
+  target: string
+  credential_type?: string | null
+  message: string
+  provider_reference?: string | null
+}
+
 export interface DiscoveryApiJobRequest {
   target_id: string
   requested_capabilities: Record<string, unknown>

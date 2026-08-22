@@ -25,6 +25,13 @@ class CollectorRegistry:
         instance = collector()
         self._collectors[instance.name] = instance
 
+    def register_alias(self, alias: str, name: str) -> None:
+        """Register an alternate name for an existing collector."""
+
+        if alias in self._collectors:
+            raise ValueError(f"Collector alias '{alias}' is already registered.")
+        self._collectors[alias] = self.get(name)
+
     def get(self, name: str) -> BaseCollector:
         """Return a collector by name."""
 

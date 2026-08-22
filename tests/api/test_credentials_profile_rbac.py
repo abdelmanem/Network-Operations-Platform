@@ -99,6 +99,98 @@ def test_authorized_admin_can_create_a_credential_profile() -> None:
         session.close()
 
 
+def test_ssh_password_profile_creation_uses_secret_reference_not_secret_field(
+    monkeypatch,
+) -> None:
+    session = _build_test_session()
+    monkeypatch.setenv("NOP_SECRET_TEST_CISCO_SSH_PASSWORD", "super-secret-value")
+    try:
+        app = create_application()
+
+        auth_service = AuthenticationService(
+            user_repository=SQLAlchemyUserRepository(session),
+            role_repository=SQLAlchemyRoleRepository(session),
+            permission_repository=SQLAlchemyPermissionRepository(session),
+            audit_repository=SQLAlchemyAuditEventRepository(session),
+            password_service=PasswordHashingService(),
+            token_service=TokenService(secret_key="test-secret"),
+        )
+
+        def override_get_db_session() -> Iterator[Session]:
+            yield session
+
+        from backend.app.auth.api.dependencies import (
+            get_auth_service as get_auth_service_dep,
+        )
+
+        app.dependency_overrides[get_db_v1] = override_get_db_session
+        app.dependency_overrides[get_db_auth] = override_get_db_session
+        app.dependency_overrides[get_auth_service_dep] = lambda: auth_service
+
+        provision_admin_user(
+            session,
+            username="admin_ssh_profile",
+            email="adminssh@example.com",
+            password="StrongPass1!",
+            confirm_password="StrongPass1!",
+            role_name="admin",
+        )
+        token_pair = auth_service.authenticate_user("admin_ssh_profile", "StrongPass1!")
+        headers = {
+            "Authorization": f"Bearer {token_pair.access_token}",
+            "X-Tenant-ID": "tenant-a",
+        }
+
+        with TestClient(app) as client:
+            profile_response = client.post(
+                "/api/v1/credentials/profiles",
+                json={
+                    "name": "Cisco SSH",
+                    "description": "Cisco SSH login",
+                    "vendor": "cisco",
+                    "platform": "iosxe",
+                    "credential_type": "ssh_password",
+                    "username": "netop",
+                    "transport_types": ["ssh"],
+                    "provider_reference": "TEST_CISCO_SSH_PASSWORD",
+                },
+                headers=headers,
+            )
+            profile_id = profile_response.json()["profile_id"]
+            target_response = client.post(
+                "/api/v1/discovery/targets",
+                json={
+                    "identifier": "core-sw-01",
+                    "address": "10.0.0.10",
+                    "scope_type": "single_device",
+                    "tenant_id": "tenant-a",
+                    "platform_hint": "cisco-iosxe",
+                    "preferred_transport": "ssh",
+                    "credential_profile_id": profile_id,
+                    "credential_reference": "ignored",
+                    "credential_references": {},
+                    "allowed_fallback_transports": [],
+                    "metadata": {},
+                    "enabled": True,
+                },
+                headers=headers,
+            )
+
+        assert profile_response.status_code == status.HTTP_201_CREATED
+        profile_body = profile_response.json()
+        assert profile_body["provider_reference"] == "TEST_CISCO_SSH_PASSWORD"
+        assert not any(key in profile_body for key in ("password", "secret", "token"))
+        assert "super-secret-value" not in str(profile_body)
+
+        assert target_response.status_code == status.HTTP_201_CREATED
+        target_body = target_response.json()
+        assert target_body["credential_profile_id"] == profile_id
+        assert "super-secret-value" not in str(target_body)
+        assert "TEST_CISCO_SSH_PASSWORD" not in str(target_body)
+    finally:
+        session.close()
+
+
 def test_unauthorized_role_receives_403_for_profile_creation() -> None:
     session = _build_test_session()
     try:

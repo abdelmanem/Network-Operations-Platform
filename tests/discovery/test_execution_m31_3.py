@@ -154,6 +154,23 @@ async def test_missing_collector_fails_with_unsupported_platform() -> None:
 
 
 @pytest.mark.anyio
+async def test_cisco_ios_inventory_collector_alias_resolves_in_execution() -> None:
+    session = _session()
+    job = _job(session, collector_name="cisco-ios-inventory")
+    registry = CollectorRegistry()
+    registry.register(RawCollector(name="cisco-catalyst-2960x-inventory", capabilities=frozenset()))
+    registry.register_alias("cisco-ios-inventory", "cisco-catalyst-2960x-inventory")
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.executed is True
+    assert outcome.job.state == DiscoveryJobStatus.SUCCEEDED.value
+    assert outcome.job.failure_code is None
+
+
+@pytest.mark.anyio
 async def test_evidence_persistence_failure_does_not_leave_job_running() -> None:
     session = _session()
     job = _job(session)

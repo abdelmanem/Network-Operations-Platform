@@ -97,4 +97,8 @@ def build_cisco_inventory_registry(
     CiscoInventoryCollectorFactory.with_defaults(transport_manager).register_all(
         registry
     )
+    registry.register_alias(
+        "cisco-ios-inventory",
+        "cisco-catalyst-2960x-inventory",
+    )
     return registry

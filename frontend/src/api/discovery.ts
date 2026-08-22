@@ -1,6 +1,8 @@
 import type {
   CredentialProfileRequest,
   CredentialProfileResponse,
+  CredentialProfileTestRequest,
+  CredentialProfileTestResponse,
   DiscoveryApiJobRequest,
   DiscoveryApiJobResponse,
   DiscoveryEvidenceResponse,
@@ -84,6 +86,21 @@ export async function createDiscoveryCredentialProfile(
   try {
     const response = await api.post<CredentialProfileResponse>(
       '/api/v1/credentials/profiles',
+      payload,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function testDiscoveryCredentialProfile(
+  profileId: string,
+  payload: CredentialProfileTestRequest,
+): Promise<CredentialProfileTestResponse> {
+  try {
+    const response = await api.post<CredentialProfileTestResponse>(
+      `/api/v1/credentials/profiles/${profileId}/test`,
       payload,
     )
     return response.data

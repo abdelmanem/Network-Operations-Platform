@@ -73,7 +73,11 @@ def test_factory_registers_supported_cisco_inventory_collectors() -> None:
         "cisco-catalyst-3560-inventory",
         "cisco-ce500-inventory",
         "cisco-aironet-inventory",
+        "cisco-ios-inventory",
     }
+    ios_collector = registry.get("cisco-ios-inventory")
+    platform_collector = registry.get("cisco-catalyst-2960x-inventory")
+    assert ios_collector is platform_collector
     assert registry.select(frozenset({CollectorCapability.INTERFACES}))
 
 
