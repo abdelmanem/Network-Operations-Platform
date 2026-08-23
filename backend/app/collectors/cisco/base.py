@@ -194,7 +194,9 @@ class CiscoInventoryCollectorBase(BaseCollector):
             identifier=context.target.identifier,
             address=context.target.address,
             metadata=dict(context.target.metadata),
-            credential_reference=self._credential_reference(context),
+            credential_reference=self._credential_reference(
+                context, selection.transport_name
+            ),
         )
         session = await self.transport_manager.open_session(
             selection.transport_name,
@@ -234,7 +236,9 @@ class CiscoInventoryCollectorBase(BaseCollector):
         return payload
 
     @staticmethod
-    def _credential_reference(context: CollectorContext) -> CredentialReference | None:
+    def _credential_reference(
+        context: CollectorContext, transport: str
+    ) -> CredentialReference | None:
         reference = context.target.metadata.get("credential_profile_id")
         if reference is None:
             reference = context.target.metadata.get("credential_reference")
@@ -243,7 +247,7 @@ class CiscoInventoryCollectorBase(BaseCollector):
             return None
         return CredentialReference(
             credential_id=str(reference),
-            transport=str(context.metadata.get("transport_name", "ssh")),
+            transport=transport,
             tenant_id=tenant_id,
         )
 

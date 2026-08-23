@@ -8,14 +8,18 @@ from backend.app.collectors.registry import CollectorRegistry
 from backend.app.discovery.contracts import DiscoveryJobStatus
 from backend.app.discovery.execution import DiscoveryExecutionService
 from backend.app.models.base import BaseModel
+from backend.app.normalization.engine import NormalizationEngine
 from backend.app.persistence.discovery_repositories import (
     DiscoveryJobRepository,
     DiscoveryPersistenceError,
 )
 from backend.app.persistence.models import (
+    DiscoveryDeviceResultRecord,
     DiscoveryEvidenceRecord,
     DiscoveryRunRecord,
     DiscoveryTargetRecord,
+    SnapshotDeviceRecord,
+    SnapshotRecord,
 )
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -47,6 +51,32 @@ class RawCollector(BaseCollector):
 class FailingCollector(RawCollector):
     async def collect(self, context: CollectorContext, *, discovered_targets):
         raise TimeoutError("device discovery timed out")
+
+
+class CiscoSW40EvidenceCollector(RawCollector):
+    async def collect(self, context: CollectorContext, *, discovered_targets):
+        return {
+            "target": {
+                "identifier": context.target.identifier,
+                "address": context.target.address,
+                "metadata": {},
+            },
+            "transport": "netmiko",
+            "platform_family": "catalyst-2960",
+            "parser_family": "iosxe",
+            "commands": {
+                "show version": "Cisco-SW-40 uptime is 1 day",
+                "show inventory": (
+                    'NAME: "1", DESCR: "WS-C2960X-24PS-L"\n'
+                    "PID: WS-C2960X-24PS-L , VID: V01 , SN: SANITIZED-SERIAL"
+                ),
+            },
+        }
+
+
+class FailingParserPipeline:
+    def parse(self, context, raw_output):
+        raise RuntimeError("parser rejected collected evidence")
 
 
 def _session() -> Session:
@@ -86,7 +116,7 @@ def _job(session: Session, collector_name: str = "raw", *, enabled: bool = True)
 
 
 @pytest.mark.anyio
-async def test_successful_discovery_persists_raw_evidence_without_snapshot() -> None:
+async def test_single_device_persists_evidence_snapshot_and_result() -> None:
     session = _session()
     job = _job(session)
     registry = CollectorRegistry()
@@ -107,6 +137,41 @@ async def test_successful_discovery_persists_raw_evidence_without_snapshot() -> 
     assert evidence.tenant_id == "tenant-a"
     assert outcome.job.selected_transport == "fake"
     assert outcome.job.selected_platform == "fake-platform"
+    assert (
+        session.execute(select(SnapshotRecord)).scalar_one().discovery_run_id
+        == job.run_id
+    )
+    assert (
+        session.execute(select(SnapshotDeviceRecord)).scalar_one().device_id
+        == "core-01"
+    )
+    result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
+    assert result.discovery_job_id == job.id
+    assert result.child_job_id == job.id
+    assert result.state == DiscoveryJobStatus.SUCCEEDED.value
+    assert "password" not in str(evidence.payload).lower()
+    assert "secret" not in str(evidence.payload).lower()
+
+
+@pytest.mark.anyio
+async def test_single_device_projects_one_device_from_cisco_sw40_evidence() -> None:
+    session = _session()
+    job = _job(session, collector_name="cisco")
+    registry = CollectorRegistry()
+    registry.register(
+        CiscoSW40EvidenceCollector(name="cisco", capabilities=frozenset())
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
+    snapshot = session.execute(select(SnapshotRecord)).scalar_one()
+    assert outcome.job.state == DiscoveryJobStatus.SUCCEEDED.value
+    assert result.state == DiscoveryJobStatus.SUCCEEDED.value
+    assert result.platform == "iosxe"
+    assert len(snapshot.devices) == 1
 
 
 @pytest.mark.anyio
@@ -123,6 +188,29 @@ async def test_failed_discovery_persists_stable_timeout_code() -> None:
     assert outcome.job.state == DiscoveryJobStatus.FAILED.value
     assert outcome.job.failure_code == "DISCOVERY_TIMEOUT"
     assert outcome.job.failure_message == "device discovery timed out"
+
+
+@pytest.mark.anyio
+async def test_parser_failure_marks_job_failed_and_keeps_raw_evidence() -> None:
+    session = _session()
+    job = _job(session)
+    registry = CollectorRegistry()
+    registry.register(RawCollector(name="raw", capabilities=frozenset()))
+
+    outcome = await DiscoveryExecutionService(
+        session,
+        registry,
+        parser_pipeline=FailingParserPipeline(),  # type: ignore[arg-type]
+        normalization_engine=NormalizationEngine(),
+    ).execute(tenant_id="tenant-a", job_id=job.id)
+
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    assert outcome.job.failure_code == "DISCOVERY_FAILED"
+    assert (
+        session.execute(select(DiscoveryEvidenceRecord)).scalar_one().job_id == job.id
+    )
+    assert session.execute(select(SnapshotRecord)).scalars().all() == []
+    assert session.execute(select(DiscoveryDeviceResultRecord)).scalars().all() == []
 
 
 @pytest.mark.anyio
@@ -158,7 +246,9 @@ async def test_cisco_ios_inventory_collector_alias_resolves_in_execution() -> No
     session = _session()
     job = _job(session, collector_name="cisco-ios-inventory")
     registry = CollectorRegistry()
-    registry.register(RawCollector(name="cisco-catalyst-2960x-inventory", capabilities=frozenset()))
+    registry.register(
+        RawCollector(name="cisco-catalyst-2960x-inventory", capabilities=frozenset())
+    )
     registry.register_alias("cisco-ios-inventory", "cisco-catalyst-2960x-inventory")
 
     outcome = await DiscoveryExecutionService(session, registry).execute(

@@ -17,6 +17,7 @@ import type {
   SnapshotResponse,
   VlanListResponse,
 } from '../types/api'
+import './NetworkPage.css'
 
 type PageSection = 'overview' | 'expected' | 'live' | 'variance' | 'comparison' | 'detail'
 type DetailView = 'interfaces' | 'vlans' | 'neighbors' | null
@@ -183,6 +184,19 @@ export function NetworkPage() {
     }
   }
 
+  // Map a variance's difference_type to a diff-badge class, same fallback
+  // ladder as the original inline color ternary.
+  const varianceBadgeClass = (differenceType: string) => {
+    const key = differenceType === 'MISSING'
+      ? 'missing'
+      : differenceType === 'UNEXPECTED'
+        ? 'unexpected'
+        : differenceType === 'MODIFIED'
+          ? 'modified'
+          : 'default'
+    return `network-diff-badge network-diff-badge-${key}`
+  }
+
   // RENDER: Overview Section
   // =========================================================================
   const renderOverview = () => (
@@ -192,7 +206,7 @@ export function NetworkPage() {
         Expected state (NetBox) vs Observed state (Live Discovery)
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1.5rem' }}>
+      <div className="network-kpi-grid">
         <KpiCard
           title="Expected Devices"
           value={netboxInventory?.device_count}
@@ -220,7 +234,7 @@ export function NetworkPage() {
       </div>
 
       {netboxInventory && (
-        <div style={{ marginTop: '1rem', fontSize: '0.875rem', color: '#666' }}>
+        <div className="network-meta-line">
           <p>
             <strong>Expected State:</strong> {formatTimestamp(netboxInventory.snapshot_captured_at)} (Source: {netboxInventory.source})
           </p>
@@ -228,37 +242,37 @@ export function NetworkPage() {
       )}
 
       {liveInventory && (
-        <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#666' }}>
+        <div className="network-meta-line">
           <p>
             <strong>Observed State:</strong> {formatTimestamp(liveInventory.snapshot_captured_at)} (Source: {liveInventory.source})
           </p>
         </div>
       )}
 
-      <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+      <div className="network-actions">
         <button
           type="button"
+          className="btn btn-outline"
           onClick={() => setCurrentSection('expected')}
-          style={{ padding: '0.5rem 1rem' }}
         >
           View Expected Inventory →
         </button>
         <button
           type="button"
+          className="btn btn-outline"
           onClick={() => setCurrentSection('live')}
-          style={{ padding: '0.5rem 1rem' }}
         >
           View Live Inventory →
         </button>
       </div>
 
-      <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+      <div className="network-callout">
         <h3>Discovery & Jobs</h3>
         <p className="muted">Manage network discovery runs and view job status.</p>
-        <Link to="/discovery" style={{ marginRight: '1rem' }}>
+        <Link to="/discovery" className="network-link">
           View Discovery →
         </Link>
-        <Link to="/jobs">View Jobs →</Link>
+        <Link to="/jobs" className="network-link">View Jobs →</Link>
       </div>
     </div>
   )
@@ -285,8 +299,8 @@ export function NetworkPage() {
         <div className="card">
           <h2>Expected Network State — NetBox</h2>
           <EmptyState title="No Snapshot" message="No NetBox snapshot found. Run discovery first." />
-          <div style={{ marginTop: '1rem' }}>
-            <Link to="/discovery">Start Discovery →</Link>
+          <div className="network-back">
+            <Link to="/discovery" className="network-link">Start Discovery →</Link>
           </div>
         </div>
       )
@@ -301,66 +315,57 @@ export function NetworkPage() {
           {formatTimestamp(inventory.snapshot_captured_at)}
         </p>
 
-        <table
-          style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            marginTop: '1rem',
-          }}
-        >
-          <thead>
-            <tr style={{ borderBottom: '2px solid #ccc' }}>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Device</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Model</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Serial</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Platform</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Management IP</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inventory.items.map((device) => (
-              <tr
-                key={device.device_id}
-                style={{ borderBottom: '1px solid #eee' }}
-              >
-                <td style={{ padding: '0.5rem' }}>{device.name || device.device_id}</td>
-                <td style={{ padding: '0.5rem' }}>{device.model || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>{device.serial_number || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>{device.platform || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>{device.management_ip || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDevice(device.device_id)}
-                    style={{
-                      padding: '0.25rem 0.75rem',
-                      fontSize: '0.875rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Compare
-                  </button>
-                </td>
+        <div className="network-table-wrap">
+          <table className="network-table">
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Model</th>
+                <th>Serial</th>
+                <th>Platform</th>
+                <th>Management IP</th>
+                <th>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {inventory.items.map((device) => (
+                <tr key={device.device_id}>
+                  <td>{device.name || device.device_id}</td>
+                  <td>{device.model || '—'}</td>
+                  <td>{device.serial_number || '—'}</td>
+                  <td>{device.platform || '—'}</td>
+                  <td>{device.management_ip || '—'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="network-table-action-btn"
+                      onClick={() => handleSelectDevice(device.device_id)}
+                    >
+                      Compare
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-        <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div className="network-pagination">
           <button
             type="button"
+            className="btn btn-outline btn-compact"
             disabled={netboxPage <= 1}
             onClick={() => loadNetboxInventory(netboxPage - 1)}
           >
             ← Previous
           </button>
-          <span style={{ fontSize: '0.875rem', color: '#666' }}>
+          <span className="network-page-indicator">
             Page {inventory.page} of{' '}
             {Math.ceil(inventory.total / (inventory.page_size || 50))}
           </span>
           <button
             type="button"
+            className="btn btn-outline btn-compact"
             disabled={!inventory.has_next}
             onClick={() => loadNetboxInventory(netboxPage + 1)}
           >
@@ -368,9 +373,10 @@ export function NetworkPage() {
           </button>
         </div>
 
-        <div style={{ marginTop: '1rem' }}>
+        <div className="network-back">
           <button
             type="button"
+            className="btn btn-ghost"
             onClick={() => setCurrentSection('overview')}
           >
             ← Back to Overview
@@ -402,8 +408,8 @@ export function NetworkPage() {
         <div className="card">
           <h2>Observed Network State — Live Discovery</h2>
           <EmptyState title="No Snapshot" message="No live snapshot found. Run discovery first." />
-          <div style={{ marginTop: '1rem' }}>
-            <Link to="/discovery">Start Discovery →</Link>
+          <div className="network-back">
+            <Link to="/discovery" className="network-link">Start Discovery →</Link>
           </div>
         </div>
       )
@@ -418,66 +424,57 @@ export function NetworkPage() {
           {formatTimestamp(inventory.snapshot_captured_at)}
         </p>
 
-        <table
-          style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            marginTop: '1rem',
-          }}
-        >
-          <thead>
-            <tr style={{ borderBottom: '2px solid #ccc' }}>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Device</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Model</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Serial</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Platform</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Management IP</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inventory.items.map((device) => (
-              <tr
-                key={device.device_id}
-                style={{ borderBottom: '1px solid #eee' }}
-              >
-                <td style={{ padding: '0.5rem' }}>{device.name || device.device_id}</td>
-                <td style={{ padding: '0.5rem' }}>{device.model || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>{device.serial_number || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>{device.platform || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>{device.management_ip || '—'}</td>
-                <td style={{ padding: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectDevice(device.device_id)}
-                    style={{
-                      padding: '0.25rem 0.75rem',
-                      fontSize: '0.875rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Compare
-                  </button>
-                </td>
+        <div className="network-table-wrap">
+          <table className="network-table">
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Model</th>
+                <th>Serial</th>
+                <th>Platform</th>
+                <th>Management IP</th>
+                <th>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {inventory.items.map((device) => (
+                <tr key={device.device_id}>
+                  <td>{device.name || device.device_id}</td>
+                  <td>{device.model || '—'}</td>
+                  <td>{device.serial_number || '—'}</td>
+                  <td>{device.platform || '—'}</td>
+                  <td>{device.management_ip || '—'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="network-table-action-btn"
+                      onClick={() => handleSelectDevice(device.device_id)}
+                    >
+                      Compare
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-        <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div className="network-pagination">
           <button
             type="button"
+            className="btn btn-outline btn-compact"
             disabled={livePage <= 1}
             onClick={() => loadLiveInventory(livePage - 1)}
           >
             ← Previous
           </button>
-          <span style={{ fontSize: '0.875rem', color: '#666' }}>
+          <span className="network-page-indicator">
             Page {inventory.page} of{' '}
             {Math.ceil(inventory.total / (inventory.page_size || 50))}
           </span>
           <button
             type="button"
+            className="btn btn-outline btn-compact"
             disabled={!inventory.has_next}
             onClick={() => loadLiveInventory(livePage + 1)}
           >
@@ -485,9 +482,10 @@ export function NetworkPage() {
           </button>
         </div>
 
-        <div style={{ marginTop: '1rem' }}>
+        <div className="network-back">
           <button
             type="button"
+            className="btn btn-ghost"
             onClick={() => setCurrentSection('overview')}
           >
             ← Back to Overview
@@ -527,25 +525,12 @@ export function NetworkPage() {
           <p className="muted">Compared at {formatTimestamp(comp.compared_at)}</p>
         )}
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '2rem',
-            marginTop: '1.5rem',
-          }}
-        >
+        <div className="network-diff">
           {/* Expected State */}
-          <div style={{ borderRight: '2px solid #eee', paddingRight: '1rem' }}>
+          <div className="network-diff-panel network-diff-expected">
             <h3>Expected State (NetBox)</h3>
             {comp.expected_state ? (
-              <table
-                style={{
-                  width: '100%',
-                  marginTop: '1rem',
-                  borderCollapse: 'collapse',
-                }}
-              >
+              <table className="network-diff-table">
                 <tbody>
                   {[
                     { label: 'Name', value: comp.expected_state.name },
@@ -562,42 +547,23 @@ export function NetworkPage() {
                       value: comp.expected_state.product_id,
                     },
                   ].map(({ label, value }) => (
-                    <tr
-                      key={label}
-                      style={{ borderBottom: '1px solid #eee' }}
-                    >
-                      <td
-                        style={{
-                          padding: '0.5rem',
-                          fontWeight: 'bold',
-                          width: '40%',
-                        }}
-                      >
-                        {label}
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        {value || '—'}
-                      </td>
+                    <tr key={label}>
+                      <td>{label}</td>
+                      <td>{value || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <p style={{ color: '#999' }}>No expected state found</p>
+              <p className="network-diff-empty">No expected state found</p>
             )}
           </div>
 
           {/* Observed State */}
-          <div style={{ paddingLeft: '1rem' }}>
+          <div className="network-diff-panel network-diff-observed">
             <h3>Observed State (Live)</h3>
             {comp.observed_state ? (
-              <table
-                style={{
-                  width: '100%',
-                  marginTop: '1rem',
-                  borderCollapse: 'collapse',
-                }}
-              >
+              <table className="network-diff-table">
                 <tbody>
                   {[
                     { label: 'Name', value: comp.observed_state.name },
@@ -614,93 +580,42 @@ export function NetworkPage() {
                       value: comp.observed_state.product_id,
                     },
                   ].map(({ label, value }) => (
-                    <tr
-                      key={label}
-                      style={{ borderBottom: '1px solid #eee' }}
-                    >
-                      <td
-                        style={{
-                          padding: '0.5rem',
-                          fontWeight: 'bold',
-                          width: '40%',
-                        }}
-                      >
-                        {label}
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        {value || '—'}
-                      </td>
+                    <tr key={label}>
+                      <td>{label}</td>
+                      <td>{value || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <p style={{ color: '#999' }}>No observed state found</p>
+              <p className="network-diff-empty">No observed state found</p>
             )}
           </div>
         </div>
 
         {/* Variances */}
         {comp.variances.length > 0 && (
-          <div style={{ marginTop: '2rem' }}>
+          <div className="network-variance-section">
             <h3>Variances ({comp.variances.length})</h3>
-            <table
-              style={{
-                width: '100%',
-                marginTop: '1rem',
-                borderCollapse: 'collapse',
-              }}
-            >
+            <table className="network-variance-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid #ccc' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Field
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Expected
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Observed
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Type
-                  </th>
+                <tr>
+                  <th>Field</th>
+                  <th>Expected</th>
+                  <th>Observed</th>
+                  <th>Type</th>
                 </tr>
               </thead>
               <tbody>
                 {comp.variances.map((v, i) => (
-                  <tr
-                    key={i}
-                    style={{
-                      borderBottom: '1px solid #eee',
-                      backgroundColor:
-                        i % 2 === 0 ? '#fafafa' : 'transparent',
-                    }}
-                  >
-                    <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>
-                      {v.field_name}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {String(v.expected_value) || '—'}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {String(v.observed_value) || '—'}
-                    </td>
-                    <td
-                      style={{
-                        padding: '0.5rem',
-                        fontWeight: 'bold',
-                        color:
-                          v.difference_type === 'MISSING'
-                            ? '#d32f2f'
-                            : v.difference_type === 'UNEXPECTED'
-                              ? '#f57c00'
-                              : v.difference_type === 'MODIFIED'
-                                ? '#fbc02d'
-                                : '#666',
-                      }}
-                    >
-                      {v.difference_type}
+                  <tr key={i}>
+                    <td className="network-variance-field">{v.field_name}</td>
+                    <td>{String(v.expected_value) || '—'}</td>
+                    <td>{String(v.observed_value) || '—'}</td>
+                    <td>
+                      <span className={varianceBadgeClass(v.difference_type)}>
+                        {v.difference_type}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -710,64 +625,57 @@ export function NetworkPage() {
         )}
 
         {comp.variances.length === 0 && (
-          <div
-            style={{
-              marginTop: '2rem',
-              padding: '1rem',
-              backgroundColor: '#e8f5e9',
-              borderRadius: '4px',
-              color: '#2e7d32',
-            }}
-          >
+          <div className="network-success-banner">
             <p>✓ No variances found. Expected and observed states match.</p>
           </div>
         )}
 
         {/* Drill-down buttons */}
         {(comp.expected_state || comp.observed_state) && (
-          <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
+          <div className="network-actions">
             <button
               type="button"
+              className="btn btn-outline"
               onClick={() => {
                 if (comp.expected_state) {
                   const snapshotId = comp.comparison_result_id || ''
                   void loadDeviceDetail(snapshotId, comp.device_id, 'interfaces')
                 }
               }}
-              style={{ padding: '0.5rem 1rem' }}
             >
               View Interfaces →
             </button>
             <button
               type="button"
+              className="btn btn-outline"
               onClick={() => {
                 if (comp.expected_state) {
                   const snapshotId = comp.comparison_result_id || ''
                   void loadDeviceDetail(snapshotId, comp.device_id, 'vlans')
                 }
               }}
-              style={{ padding: '0.5rem 1rem' }}
             >
               View VLANs →
             </button>
             <button
               type="button"
+              className="btn btn-outline"
               onClick={() => {
                 if (comp.expected_state) {
                   const snapshotId = comp.comparison_result_id || ''
                   void loadDeviceDetail(snapshotId, comp.device_id, 'neighbors')
                 }
               }}
-              style={{ padding: '0.5rem 1rem' }}
             >
               View Neighbors →
             </button>
           </div>
         )}
 
-        <div style={{ marginTop: '1.5rem' }}>
+        <div className="network-back network-back-lg">
           <button
             type="button"
+            className="btn btn-ghost"
             onClick={() => {
               setSelectedDeviceId(null)
               setComparison(null)
@@ -821,47 +729,26 @@ export function NetworkPage() {
         )}
 
         {detailView === 'interfaces' && detailInterfaces && (
-          <div>
-            <table
-              style={{
-                width: '100%',
-                marginTop: '1rem',
-                borderCollapse: 'collapse',
-              }}
-            >
+          <div className="network-table-wrap">
+            <table className="network-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid #ccc' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Interface
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Description
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Status
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Speed
-                  </th>
+                <tr>
+                  <th>Interface</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <th>Speed</th>
                 </tr>
               </thead>
               <tbody>
                 {detailInterfaces.items.map((iface) => (
-                  <tr
-                    key={iface.name}
-                    style={{ borderBottom: '1px solid #eee' }}
-                  >
-                    <td style={{ padding: '0.5rem' }}>{iface.name}</td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {iface.description || '—'}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
+                  <tr key={iface.name}>
+                    <td>{iface.name}</td>
+                    <td>{iface.description || '—'}</td>
+                    <td>
                       {iface.admin_status || '—'} /{' '}
                       {iface.oper_status || '—'}
                     </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {iface.speed_mbps ? `${iface.speed_mbps} Mbps` : '—'}
-                    </td>
+                    <td>{iface.speed_mbps ? `${iface.speed_mbps} Mbps` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -870,38 +757,21 @@ export function NetworkPage() {
         )}
 
         {detailView === 'vlans' && detailVlans && (
-          <div>
-            <table
-              style={{
-                width: '100%',
-                marginTop: '1rem',
-                borderCollapse: 'collapse',
-              }}
-            >
+          <div className="network-table-wrap">
+            <table className="network-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid #ccc' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    VLAN ID
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Name
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Status
-                  </th>
+                <tr>
+                  <th>VLAN ID</th>
+                  <th>Name</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {detailVlans.items.map((vlan) => (
-                  <tr
-                    key={vlan.vlan_id}
-                    style={{ borderBottom: '1px solid #eee' }}
-                  >
-                    <td style={{ padding: '0.5rem' }}>{vlan.vlan_id}</td>
-                    <td style={{ padding: '0.5rem' }}>{vlan.name}</td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {vlan.status || '—'}
-                    </td>
+                  <tr key={vlan.vlan_id}>
+                    <td>{vlan.vlan_id}</td>
+                    <td>{vlan.name}</td>
+                    <td>{vlan.status || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -910,48 +780,23 @@ export function NetworkPage() {
         )}
 
         {detailView === 'neighbors' && detailNeighbors && (
-          <div>
-            <table
-              style={{
-                width: '100%',
-                marginTop: '1rem',
-                borderCollapse: 'collapse',
-              }}
-            >
+          <div className="network-table-wrap">
+            <table className="network-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid #ccc' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Remote Device
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Local Interface
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Remote Interface
-                  </th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem' }}>
-                    Protocol
-                  </th>
+                <tr>
+                  <th>Remote Device</th>
+                  <th>Local Interface</th>
+                  <th>Remote Interface</th>
+                  <th>Protocol</th>
                 </tr>
               </thead>
               <tbody>
                 {detailNeighbors.items.map((neighbor, i) => (
-                  <tr
-                    key={i}
-                    style={{ borderBottom: '1px solid #eee' }}
-                  >
-                    <td style={{ padding: '0.5rem' }}>
-                      {neighbor.remote_device_id}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {neighbor.local_interface || '—'}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {neighbor.remote_interface || '—'}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      {neighbor.protocol || '—'}
-                    </td>
+                  <tr key={i}>
+                    <td>{neighbor.remote_device_id}</td>
+                    <td>{neighbor.local_interface || '—'}</td>
+                    <td>{neighbor.remote_interface || '—'}</td>
+                    <td>{neighbor.protocol || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -959,9 +804,10 @@ export function NetworkPage() {
           </div>
         )}
 
-        <div style={{ marginTop: '1.5rem' }}>
+        <div className="network-back">
           <button
             type="button"
+            className="btn btn-ghost"
             onClick={() => {
               setDetailView(null)
               setCurrentSection('comparison')
@@ -978,8 +824,8 @@ export function NetworkPage() {
   // Main Render
   // =========================================================================
   return (
-    <div className="page">
-      <div className="dashboard-header">
+    <div className="page network-page">
+      <div className="dashboard-header network-page-header">
         <div>
           <h1>Network Operations</h1>
           <p className="muted">

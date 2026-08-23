@@ -324,7 +324,9 @@ class CiscoInventoryParser(BaseParser):
                     stripped.split(":", 1)[1].split(",", 1)[0].strip()
                 )
             elif lower.startswith(("port id", "port description")):
-                current["remote_interface"] = stripped.split(":", 1)[1].strip()
+                _, separator, value = stripped.partition(":")
+                if separator and value.strip():
+                    current["remote_interface"] = value.strip()
         return records
 
     def _power_record(

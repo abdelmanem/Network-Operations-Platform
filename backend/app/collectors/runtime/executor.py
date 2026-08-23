@@ -22,8 +22,8 @@ from backend.app.collectors.registry import CollectorRegistry
 from backend.app.collectors.runtime.context import CollectorRuntimeContext
 from backend.app.collectors.runtime.job import CollectorJob
 from backend.app.collectors.runtime.metrics import CollectorRuntimeMetrics
+from backend.app.collectors.runtime.processing import process_collector_payload
 from backend.app.normalization.engine import NormalizationEngine
-from backend.app.parsers.context import ParserContext
 from backend.app.parsers.pipeline import ParserPipeline
 from backend.app.snapshot.mapper import SnapshotMapper
 from backend.app.snapshot.repository import SnapshotRepository
@@ -163,17 +163,17 @@ class CollectorExecutor:
             collector_context,
             discovered_targets=(),
         )
-        parser_context = ParserContext(
+        processed = process_collector_payload(
+            parser_pipeline=self.parser_pipeline,
+            normalization_engine=self.normalization_engine,
+            snapshot_mapper=self.snapshot_mapper,
             source=runtime_context.target.identifier,
-            input_format=runtime_context.parser_input_format,
             parser_name=runtime_context.parser_name,
             run_id=runtime_context.run_id,
             metadata=dict(runtime_context.metadata),
+            raw_payload=raw_payload,
         )
-        parsed_result = self.parser_pipeline.parse(parser_context, raw_payload)
-        normalized = self.normalization_engine.normalize(parsed_result)
-        snapshot_model = self.snapshot_mapper.to_model(normalized.snapshot)
-        await self.snapshot_repository.save(snapshot_model)
+        await self.snapshot_repository.save(processed.snapshot_model)
 
         finished_at = datetime.now(UTC)
         return CollectorExecutionResult(
@@ -181,9 +181,9 @@ class CollectorExecutor:
             collector_name=collector.name,
             target=runtime_context.target,
             status=CollectorExecutionStatus.SUCCEEDED,
-            snapshot=normalized.snapshot,
+            snapshot=processed.normalized_result.snapshot,
             transport_name=selected_transport_name,
-            parser_name=parsed_result.parser_name,
+            parser_name=processed.parsed_result.parser_name,
             attempts=job.state.attempts,
             started_at=started_at,
             finished_at=finished_at,

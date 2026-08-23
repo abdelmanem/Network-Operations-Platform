@@ -11,8 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.collectors.base import BaseCollector
+from backend.app.collectors.cisco.inventory import CiscoInventoryParser
 from backend.app.collectors.context import CollectorContext
 from backend.app.collectors.registry import CollectorRegistry
+from backend.app.collectors.runtime.processing import process_collector_payload
 from backend.app.discovery.capabilities import CollectorCapability
 from backend.app.discovery.context import DiscoveryContext, DiscoveryTarget
 from backend.app.discovery.contracts import (
@@ -21,6 +23,9 @@ from backend.app.discovery.contracts import (
     DiscoveryJobStatus,
     DiscoveryTraceability,
 )
+from backend.app.normalization.engine import NormalizationEngine
+from backend.app.parsers.pipeline import ParserPipeline
+from backend.app.parsers.registry import ParserRegistry
 from backend.app.persistence.discovery_repositories import (
     DiscoveryEvidenceRepository,
     DiscoveryJobRepository,
@@ -35,6 +40,8 @@ from backend.app.persistence.models import (
     DiscoveryTargetRecord,
     DiscoveryTransportAttemptRecord,
 )
+from backend.app.persistence.repositories import SnapshotRepository
+from backend.app.snapshot.mapper import SnapshotMapper
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,12 +60,26 @@ class DiscoveryExecutionService:
         self,
         session: Session,
         collector_registry: CollectorRegistry,
+        *,
+        parser_pipeline: ParserPipeline | None = None,
+        normalization_engine: NormalizationEngine | None = None,
+        snapshot_mapper: SnapshotMapper | None = None,
     ) -> None:
         self.session = session
         self.collector_registry = collector_registry
         self.jobs = DiscoveryJobRepository(session)
         self.evidence = DiscoveryEvidenceRepository(session)
         self.attempts = DiscoveryTransportAttemptRepository(session)
+        self.parser_pipeline = parser_pipeline or self._default_parser_pipeline()
+        self.normalization_engine = normalization_engine or NormalizationEngine()
+        self.snapshot_mapper = snapshot_mapper or SnapshotMapper()
+        self.snapshots = SnapshotRepository(session)
+
+    @staticmethod
+    def _default_parser_pipeline() -> ParserPipeline:
+        registry = ParserRegistry()
+        registry.register(CiscoInventoryParser())
+        return ParserPipeline(registry=registry)
 
     async def execute(
         self,
@@ -112,6 +133,32 @@ class DiscoveryExecutionService:
             )
             evidence = self._build_evidence(job, target, collector, raw_payload)
             self.evidence.create(evidence)
+            # Raw evidence is an immutable audit artifact and must survive a
+            # downstream parser or normalization failure.
+            self.session.commit()
+            collector_parser = getattr(collector, "parser", None)
+            processed = process_collector_payload(
+                parser_pipeline=self.parser_pipeline,
+                normalization_engine=self.normalization_engine,
+                snapshot_mapper=self.snapshot_mapper,
+                source=target.identifier,
+                parser_name=getattr(collector_parser, "name", None),
+                run_id=job.run_id,
+                metadata=dict(context.metadata),
+                raw_payload=raw_payload,
+            )
+            self.snapshots.add_live_snapshot(
+                processed.normalized_result.snapshot,
+                discovery_run_id=job.run_id,
+            )
+            self._record_device_result(
+                job=job,
+                target=target,
+                devices=processed.normalized_result.snapshot.devices,
+                selected_transport=self._payload_string(
+                    raw_payload, "transport", target.metadata.get("transport_name")
+                ),
+            )
             completed = self.jobs.transition(
                 tenant_id=tenant_id,
                 job_id=job.id,
@@ -239,6 +286,49 @@ class DiscoveryExecutionService:
     ) -> dict[str, object]:
         payload = await collector.collect(context, discovered_targets=())
         return dict(payload)
+
+    def _record_device_result(
+        self,
+        *,
+        job: DiscoveryJobRecord,
+        target: DiscoveryTargetRecordView,
+        devices: tuple[object, ...],
+        selected_transport: str | None,
+    ) -> None:
+        """Create or update the result projection for one executed target."""
+
+        device = devices[0] if devices else None
+        existing = self.session.scalar(
+            select(DiscoveryDeviceResultRecord).where(
+                DiscoveryDeviceResultRecord.child_job_id == job.id,
+                DiscoveryDeviceResultRecord.tenant_id == target.tenant_id,
+            )
+        )
+        values = {
+            "address": getattr(device, "management_ip", None) or target.address,
+            "hostname": getattr(device, "name", None),
+            "vendor": getattr(device, "manufacturer", None),
+            "platform": getattr(device, "platform", None),
+            "state": DiscoveryJobStatus.SUCCEEDED.value,
+            "selected_transport": selected_transport,
+            "failure_code": None,
+            "failure_message": None,
+            "completed_at": datetime.now(UTC),
+        }
+        if existing is None:
+            self.session.add(
+                DiscoveryDeviceResultRecord(
+                    tenant_id=target.tenant_id,
+                    discovery_job_id=job.id,
+                    child_job_id=job.id,
+                    correlation_id=job.correlation_id,
+                    started_at=job.started_at,
+                    **values,
+                )
+            )
+            return
+        for key, value in values.items():
+            setattr(existing, key, value)
 
     @staticmethod
     def _build_evidence(

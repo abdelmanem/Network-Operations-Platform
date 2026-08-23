@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from backend.app.collectors.cisco.inventory import CiscoInventoryParser
 from backend.app.normalization.engine import NormalizationEngine
 from backend.app.parsers.context import ParserContext, ParserInputFormat
@@ -64,3 +65,39 @@ def test_cisco_inventory_parser_maps_fixture_payload_to_snapshot() -> None:
     assert device.neighbors[0].remote_device_id == "core-switch"
     assert device.power is not None
     assert device.power.available_watts == 370.0
+
+
+@pytest.mark.parametrize(
+    ("port_line", "expected_remote_interface"),
+    [
+        ("Port ID: GigabitEthernet1/0/24", "GigabitEthernet1/0/24"),
+        ("Port Description", None),
+    ],
+)
+def test_lldp_port_labels_without_or_with_colon_do_not_crash_parsing(
+    port_line: str,
+    expected_remote_interface: str | None,
+) -> None:
+    parser = CiscoInventoryParser()
+    payload = {
+        "target": {"identifier": "switch-1", "address": "10.0.0.10"},
+        "commands": {
+            "show lldp neighbors detail": (
+                "System Name: core-switch\n"
+                "Interface: GigabitEthernet1/0/1, Port ID: ignored\n"
+                f"{port_line}\n"
+            )
+        },
+    }
+
+    result = parser.parse(
+        ParserContext(
+            source="switch-1",
+            input_format=ParserInputFormat.JSON,
+            parser_name=parser.name,
+        ),
+        payload,
+    )
+
+    neighbor = next(record for record in result.records if record.kind == "neighbor")
+    assert neighbor.payload["remote_interface"] == expected_remote_interface

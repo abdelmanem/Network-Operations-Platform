@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
@@ -128,6 +129,25 @@ class CredentialProvider(Protocol):
         """Return ephemeral credentials without persisting or serializing secrets."""
 
 
+class CredentialResolutionError(RuntimeError):
+    """Raised when a credential profile cannot produce safe runtime credentials."""
+
+
+class CredentialProfile(Protocol):
+    """Secret-free profile metadata required for runtime credential resolution."""
+
+    id: UUID
+    tenant_id: str
+    provider_reference: str
+    transport_types: list[str]
+    credential_type: str | None
+    username: str | None
+    enabled: bool
+
+
+ProfileLoader = Callable[[str, UUID], CredentialProfile | None]
+
+
 @dataclass(slots=True)
 class EnvironmentSecretProvider:
     """Process-environment secret provider for development and tests only."""
@@ -152,25 +172,102 @@ class EnvironmentSecretProvider:
 
 
 @dataclass(slots=True)
-class EnvironmentCredentialProvider:
-    """Resolve opaque profile IDs from environment variables at execution time."""
+class ProfileSecretCredentialProvider:
+    """Build ephemeral transport credentials from a tenant-scoped profile secret."""
 
-    prefix: str = "NOP_CREDENTIAL_"
+    secret_provider: SecretProvider
+    profile_loader: ProfileLoader
 
-    def resolve_reference(
-        self, reference: CredentialReference
-    ) -> TransportCredentials | None:
-        key = re.sub(r"[^A-Za-z0-9]", "_", str(reference.credential_id)).upper()
-        transport = reference.transport.upper().replace("-", "_")
-        value = os.getenv(f"{self.prefix}{key}_{transport}")
-        if value is None:
-            return None
-        if transport in {"SNMP", "SNMPV2C"}:
-            return SNMPv2cCredentials(community=value)
-        username = os.getenv(f"{self.prefix}{key}_USERNAME")
-        if username is None:
-            return None
-        return UsernamePasswordCredentials(username=username, password=value)
+    def resolve_reference(self, reference: CredentialReference) -> TransportCredentials:
+        profile_id = self._profile_id(reference)
+        profile = self.profile_loader(reference.tenant_id, profile_id)
+        if profile is None or not profile.enabled:
+            raise CredentialResolutionError("Credential profile was not found.")
+
+        transport = self._transport_kind(reference.transport)
+        if transport not in {item.strip().lower() for item in profile.transport_types}:
+            raise CredentialResolutionError(
+                "Credential profile does not support the selected transport."
+            )
+
+        credential_type = (profile.credential_type or "").strip().lower()
+        if transport == "ssh":
+            if credential_type not in {"ssh_password", "telnet_password"}:
+                raise CredentialResolutionError(
+                    "Credential profile is not compatible with SSH."
+                )
+            if not profile.username:
+                raise CredentialResolutionError(
+                    "Credential profile username is required for SSH."
+                )
+            return UsernamePasswordCredentials(
+                username=profile.username,
+                password=self.secret_provider.resolve_secret(
+                    profile.provider_reference
+                ),
+            )
+        if transport == "snmp":
+            if credential_type != "snmp_v2c":
+                raise CredentialResolutionError(
+                    "Credential profile is not compatible with SNMP."
+                )
+            return SNMPv2cCredentials(
+                community=self.secret_provider.resolve_secret(
+                    profile.provider_reference
+                )
+            )
+        if transport == "http":
+            if credential_type == "http_basic":
+                if not profile.username:
+                    raise CredentialResolutionError(
+                        "Credential profile username is required for HTTP basic auth."
+                    )
+                return UsernamePasswordCredentials(
+                    username=profile.username,
+                    password=self.secret_provider.resolve_secret(
+                        profile.provider_reference
+                    ),
+                )
+            if credential_type == "http_token":
+                return TokenCredentials(
+                    token=self.secret_provider.resolve_secret(
+                        profile.provider_reference
+                    )
+                )
+
+        raise CredentialResolutionError(
+            "Credential profile is not compatible with the selected transport."
+        )
+
+    @staticmethod
+    def _profile_id(reference: CredentialReference) -> UUID:
+        try:
+            return UUID(str(reference.credential_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise CredentialResolutionError(
+                "Credential profile was not found."
+            ) from exc
+
+    @staticmethod
+    def _transport_kind(transport: str) -> str:
+        normalized = transport.strip().lower()
+        aliases = {
+            "ssh": "ssh",
+            "paramiko": "ssh",
+            "netmiko": "ssh",
+            "snmp": "snmp",
+            "snmpv2c": "snmp",
+            "pysnmp": "snmp",
+            "http": "http",
+            "https": "http",
+            "httpx": "http",
+        }
+        try:
+            return aliases[normalized]
+        except KeyError as exc:
+            raise CredentialResolutionError(
+                "Credential profile does not support the selected transport."
+            ) from exc
 
 
 @dataclass(slots=True)

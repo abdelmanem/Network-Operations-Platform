@@ -53,13 +53,15 @@ from backend.app.orchestration.engine import OrchestrationEngine
 from backend.app.orchestration.workflow import WorkflowEngine
 from backend.app.parsers.pipeline import ParserPipeline
 from backend.app.parsers.registry import ParserRegistry
+from backend.app.persistence.discovery_repositories import CredentialProfileRepository
+from backend.app.persistence.models import CredentialProfileRecord
 from backend.app.persistence.unit_of_work import PersistenceUnitOfWork
 from backend.app.scheduler.registry import WorkerRegistry
 from backend.app.services.base import ServiceContext
 from backend.app.services.inventory import InventoryService
 from backend.app.snapshot.models import InventorySnapshotModel
 from backend.app.transports.credentials import (
-    EnvironmentCredentialProvider,
+    ProfileSecretCredentialProvider,
     SecretProvider,
 )
 from backend.app.transports.http.httpx import HttpxTransport
@@ -99,9 +101,30 @@ class _InMemorySnapshotRepository:
         self._snapshots.clear()
 
 
+def _load_credential_profile(
+    tenant_id: str, profile_id: uuid.UUID
+) -> CredentialProfileRecord | None:
+    """Load one tenant-scoped profile in a short-lived execution session."""
+
+    session = SessionLocal()
+    try:
+        return CredentialProfileRepository(session).get(
+            tenant_id=tenant_id, profile_id=profile_id
+        )
+    finally:
+        session.close()
+
+
 def _build_runtime_services(
     settings: Settings,
-) -> tuple[InventoryService, CollectorRuntimeEngine, CollectorRegistry]:
+    secret_provider: SecretProvider,
+) -> tuple[
+    InventoryService,
+    CollectorRuntimeEngine,
+    CollectorRegistry,
+    ParserPipeline,
+    NormalizationEngine,
+]:
     """Build the real NetBox inventory and collector runtime graph."""
 
     if not settings.netbox_url:
@@ -128,7 +151,10 @@ def _build_runtime_services(
     )
 
     transport_manager = TransportManager(
-        credential_provider=EnvironmentCredentialProvider()
+        credential_provider=ProfileSecretCredentialProvider(
+            secret_provider=secret_provider,
+            profile_loader=_load_credential_profile,
+        )
     )
     for transport in (
         NetmikoSSHTransport(),
@@ -140,12 +166,14 @@ def _build_runtime_services(
 
     parser_registry = ParserRegistry()
     parser_registry.register(CiscoInventoryParser())
+    parser_pipeline = ParserPipeline(registry=parser_registry)
+    normalization_engine = NormalizationEngine()
     collector_registry = build_cisco_inventory_registry(transport_manager)
     collector_executor = CollectorExecutor(
         collector_registry=collector_registry,
         transport_manager=transport_manager,
-        parser_pipeline=ParserPipeline(registry=parser_registry),
-        normalization_engine=NormalizationEngine(),
+        parser_pipeline=parser_pipeline,
+        normalization_engine=normalization_engine,
         snapshot_repository=_InMemorySnapshotRepository(),
         metrics=CollectorRuntimeMetrics(),
     )
@@ -161,7 +189,13 @@ def _build_runtime_services(
         dispatcher=dispatcher,
         metrics=runtime_metrics,
     )
-    return inventory_service, collector_runtime, collector_registry
+    return (
+        inventory_service,
+        collector_runtime,
+        collector_registry,
+        parser_pipeline,
+        normalization_engine,
+    )
 
 
 @dataclass(slots=True)
@@ -181,6 +215,8 @@ class ApplicationContainer:
     job_manager: JobManager
     worker_registry: WorkerRegistry
     discovery_collector_registry: CollectorRegistry
+    discovery_parser_pipeline: ParserPipeline
+    discovery_normalization_engine: NormalizationEngine
     secret_provider: SecretProvider
 
 
@@ -204,9 +240,13 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     event_dispatcher = EventDispatcher(event_registry)
     event_bus = EventBus(registry=event_registry)
     notification_service = NotificationService(adapters={}, mappings=[])
-    inventory_service, collector_runtime, collector_registry = _build_runtime_services(
-        app_settings
-    )
+    (
+        inventory_service,
+        collector_runtime,
+        collector_registry,
+        parser_pipeline,
+        normalization_engine,
+    ) = _build_runtime_services(app_settings, secret_provider)
     workflow = WorkflowEngine(
         inventory_service=inventory_service,
         discovery_coordinator=DiscoveryCoordinator(collector_runtime),
@@ -236,6 +276,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         job_manager=job_manager,
         worker_registry=WorkerRegistry(),
         discovery_collector_registry=collector_registry,
+        discovery_parser_pipeline=parser_pipeline,
+        discovery_normalization_engine=normalization_engine,
         secret_provider=secret_provider,
     )
 

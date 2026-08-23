@@ -17,6 +17,8 @@ from backend.app.database.session import SessionLocal
 from backend.app.discovery.contracts import DiscoveryJobStatus
 from backend.app.discovery.execution import DiscoveryExecutionService
 from backend.app.discovery.fanout import DiscoveryFanoutService
+from backend.app.normalization.engine import NormalizationEngine
+from backend.app.parsers.pipeline import ParserPipeline
 from backend.app.persistence.discovery_repositories import (
     CredentialProfileRepository,
     DiscoveryEvidenceRepository,
@@ -199,6 +201,8 @@ def create_job(
         tenant_id,
         job.id,
         runtime_container.discovery_collector_registry,
+        runtime_container.discovery_parser_pipeline,
+        runtime_container.discovery_normalization_engine,
     )
     return _job_response(job)
 
@@ -340,6 +344,8 @@ async def _execute_job(
     tenant_id: str,
     job_id: UUID,
     collector_registry: CollectorRegistry,
+    parser_pipeline: ParserPipeline,
+    normalization_engine: NormalizationEngine,
 ) -> None:
     db_session = SessionLocal()
     try:
@@ -365,7 +371,12 @@ async def _execute_job(
             )
             db_session.commit()
         else:
-            service = DiscoveryExecutionService(db_session, collector_registry)
+            service = DiscoveryExecutionService(
+                db_session,
+                collector_registry,
+                parser_pipeline=parser_pipeline,
+                normalization_engine=normalization_engine,
+            )
             await service.execute(tenant_id=tenant_id, job_id=job_id)
     finally:
         db_session.close()
