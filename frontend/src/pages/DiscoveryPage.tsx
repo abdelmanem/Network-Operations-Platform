@@ -873,7 +873,7 @@ function DiscoveryExecutionPanel({
             </div>
             {job.selected_platform ? (
               <div>
-                <dt>Platform</dt>
+                <dt>Collector family</dt>
                 <dd>{formatPlatform(job.selected_platform)}</dd>
               </div>
             ) : null}
@@ -968,7 +968,9 @@ function DiscoveryResultsPanel({
             <thead>
               <tr>
                 <th>Address</th>
+                <th>Hostname</th>
                 <th>Vendor</th>
+                <th>Model</th>
                 <th>Platform</th>
                 <th>State</th>
                 <th>Transport</th>
@@ -981,7 +983,9 @@ function DiscoveryResultsPanel({
                   <td>
                     <code>{result.address}</code>
                   </td>
+                  <td>{result.hostname || '—'}</td>
                   <td>{result.vendor || 'Unknown'}</td>
+                  <td>{result.model || '—'}</td>
                   <td>{result.platform || '—'}</td>
                   <td>{result.state.replaceAll('_', ' ')}</td>
                   <td>

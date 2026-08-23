@@ -6,8 +6,16 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class SnapshotComparisonRequest(BaseModel):
+    """Existing expected and observed snapshots to compare."""
+
+    expected_snapshot_id: UUID
+    observed_snapshot_id: UUID
+
+
 class ComparisonResultResponse(BaseModel):
     id: UUID
+    status: str = "completed"
     expected_snapshot_id: UUID
     observed_snapshot_id: UUID
     compared_at: datetime

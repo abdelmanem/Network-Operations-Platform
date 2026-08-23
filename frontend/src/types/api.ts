@@ -230,6 +230,7 @@ export interface DiscoveryDeviceResultResponse {
   address: string
   hostname: string | null
   vendor: string | null
+  model: string | null
   platform: string | null
   state: string
   selected_transport: string | null

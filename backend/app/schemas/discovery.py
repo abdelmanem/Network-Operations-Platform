@@ -304,6 +304,7 @@ class DiscoveryDeviceResultResponse(BaseModel):
     address: str
     hostname: str | None = None
     vendor: str | None = None
+    model: str | None = None
     platform: str | None = None
     state: str
     selected_transport: str | None = None

@@ -374,4 +374,106 @@ describe('DiscoveryPage', () => {
       expect(screen.getByText('queued')).toBeInTheDocument()
     })
   })
+
+  it('labels collector metadata separately and shows the discovered device identity', async () => {
+    listTargets.mockResolvedValue([
+      {
+        target_id: 'target-1',
+        tenant_id: 'default',
+        identifier: 'coreSW',
+        address: '192.168.137.225',
+        scope_type: 'single_device',
+        scope_end: null,
+        scope_cidr: null,
+        credential_profile_id: 'profile-cisco-ssh',
+        vendor: null,
+        platform_hint: 'cisco-ios',
+        preferred_transport: 'netmiko',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    listCredentialProfiles.mockResolvedValue([])
+    createJob.mockResolvedValue({
+      job_id: 'job-1',
+      tenant_id: 'default',
+      target_id: 'target-1',
+      discovery_run_id: 'run-1',
+      status: 'running',
+      selected_transport: null,
+      selected_platform: null,
+      attempts: 0,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-08-19T10:00:00Z',
+      queued_at: '2026-08-19T10:00:00Z',
+      started_at: '2026-08-19T10:00:00Z',
+      finished_at: null,
+      timeout_seconds: 120,
+      correlation_id: null,
+    })
+    getJob.mockResolvedValue({
+      job_id: 'job-1',
+      tenant_id: 'default',
+      target_id: 'target-1',
+      discovery_run_id: 'run-1',
+      status: 'succeeded',
+      selected_transport: 'netmiko',
+      selected_platform: 'catalyst-2960',
+      attempts: 1,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-08-19T10:00:00Z',
+      queued_at: '2026-08-19T10:00:00Z',
+      started_at: '2026-08-19T10:00:00Z',
+      finished_at: '2026-08-19T10:00:01Z',
+      timeout_seconds: 120,
+      correlation_id: null,
+    })
+    getDeviceResults.mockResolvedValue([
+      {
+        result_id: 'result-1',
+        address: '192.168.137.225',
+        hostname: 'Radisson_Blu_BB',
+        vendor: 'Cisco',
+        model: 'WS-C4506-E',
+        platform: 'ios',
+        state: 'succeeded',
+        selected_transport: 'netmiko',
+        failure_code: null,
+        failure_message: null,
+        started_at: '2026-08-19T10:00:00Z',
+        completed_at: '2026-08-19T10:00:01Z',
+        correlation_id: null,
+      },
+    ])
+    getEvidence.mockResolvedValue([])
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: /start discovery/i })[1],
+      ).toBeEnabled()
+    })
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /start discovery/i })[1],
+    )
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Collector family')).toBeInTheDocument()
+        expect(screen.getByText('WS-C4506-E')).toBeInTheDocument()
+        expect(screen.getByText('Radisson_Blu_BB')).toBeInTheDocument()
+        expect(screen.getByText('ios')).toBeInTheDocument()
+      },
+      { timeout: 3000 },
+    )
+    expect(screen.getByText('catalyst-2960')).toBeInTheDocument()
+  })
 })

@@ -33,6 +33,8 @@ from backend.app.persistence.models import (
     DiscoveryRunRecord,
     DiscoveryTargetRecord,
     DiscoveryTransportAttemptRecord,
+    SnapshotDeviceRecord,
+    SnapshotRecord,
 )
 from backend.app.schemas.discovery import (
     CredentialProfileRequest,
@@ -273,10 +275,8 @@ def get_job_devices(
     _: Annotated[User, Depends(require_permission("discovery:job:read"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
 ) -> list[DiscoveryDeviceResultResponse]:
-    if (
-        DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
-        is None
-    ):
+    job = DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail="Discovery job was not found.")
     records = db_session.scalars(
         select(DiscoveryDeviceResultRecord).where(
@@ -284,6 +284,19 @@ def get_job_devices(
             DiscoveryDeviceResultRecord.discovery_job_id == job_id,
         )
     ).all()
+    snapshot_models = db_session.execute(
+        select(SnapshotDeviceRecord.management_ip, SnapshotDeviceRecord.model)
+        .join(SnapshotRecord)
+        .where(
+            SnapshotRecord.discovery_run_id == job.run_id,
+            SnapshotRecord.source == "live",
+        )
+    ).all()
+    models_by_management_ip = {
+        management_ip: model
+        for management_ip, model in snapshot_models
+        if management_ip is not None
+    }
     return [
         DiscoveryDeviceResultResponse.model_validate(
             {
@@ -291,6 +304,7 @@ def get_job_devices(
                 "address": record.address,
                 "hostname": record.hostname,
                 "vendor": record.vendor,
+                "model": models_by_management_ip.get(record.address),
                 "platform": record.platform,
                 "state": record.state,
                 "selected_transport": record.selected_transport,
