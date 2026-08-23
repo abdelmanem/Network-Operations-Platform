@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -13,11 +14,35 @@ from backend.app.vendors.cisco.models.ios import CATALYST_2960, CATALYST_3560
 from backend.app.vendors.cisco.models.iosxe import CATALYST_2960X
 
 
+PUBLIC_PLATFORM_ALIASES: dict[str, str] = {
+    "cisco-ios": "catalyst-2960",
+    "cisco-iosxe": "catalyst-2960x",
+    "ios": "catalyst-2960",
+    "iosxe": "catalyst-2960x",
+    "cisco-ios-xe": "catalyst-2960x",
+    "cisco-ios-x": "catalyst-2960x",
+    "cisco-ios-xe-software": "catalyst-2960x",
+    "cisco-ios-software": "catalyst-2960",
+    "cisco-catalyst-2960": "catalyst-2960",
+    "catalyst-2960": "catalyst-2960",
+    "cisco-catalyst-2960x": "catalyst-2960x",
+    "catalyst-2960x": "catalyst-2960x",
+}
+
+
 @dataclass(slots=True)
 class CiscoPlatformRegistry:
     """Register and resolve Cisco platform definitions."""
 
     _platforms: dict[str, CiscoPlatformDefinition] = field(default_factory=dict)
+
+    def canonicalize_family(self, family: str) -> str:
+        """Normalize user-facing platform labels to canonical registry families."""
+
+        normalized = family.strip().lower().replace("_", "-")
+        normalized = re.sub(r"\s+", "-", normalized)
+        normalized = normalized.strip("-")
+        return PUBLIC_PLATFORM_ALIASES.get(normalized, normalized)
 
     def register(self, platform: CiscoPlatformDefinition) -> None:
         """Register a platform definition."""

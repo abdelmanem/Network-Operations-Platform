@@ -281,6 +281,7 @@ class CiscoInventoryCollectorBase(BaseCollector):
         if family is None:
             family = self.platform_family
         if family:
+            family = self.platform_registry.canonicalize_family(family)
             try:
                 return self.platform_registry.get(family)
             except KeyError:

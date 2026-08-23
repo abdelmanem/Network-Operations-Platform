@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -59,7 +60,18 @@ class DiscoveryTargetRequest(BaseModel):
     @field_validator("platform_hint")
     @classmethod
     def validate_platform_hint(cls, value: str | None) -> str | None:
-        if value is not None and value not in {"cisco-ios", "cisco-iosxe"}:
+        if value is None:
+            return value
+        normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+        supported = {
+            "cisco-ios",
+            "cisco-iosxe",
+            "ios",
+            "iosxe",
+            "cisco-ios-xe",
+            "cisco-ios-x",
+        }
+        if normalized not in supported:
             raise ValueError("Unsupported discovery platform.")
         return value
 

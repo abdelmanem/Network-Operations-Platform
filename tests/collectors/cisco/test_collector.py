@@ -81,6 +81,23 @@ def test_factory_registers_supported_cisco_inventory_collectors() -> None:
     assert registry.select(frozenset({CollectorCapability.INTERFACES}))
 
 
+def test_ios_collector_resolves_public_platform_hints_to_canonical_families() -> None:
+    manager = TransportManager()
+    collector = CiscoIOSInventoryCollector(transport_manager=manager)
+
+    ios_context = CollectorContext(
+        target=DiscoveryTarget(identifier="switch-ios", address="10.0.0.11"),
+        metadata={"platform_family": "cisco-ios"},
+    )
+    iosxe_context = CollectorContext(
+        target=DiscoveryTarget(identifier="switch-iosxe", address="10.0.0.12"),
+        metadata={"platform_family": "cisco-iosxe"},
+    )
+
+    assert collector.resolve_platform(ios_context).metadata.family == "catalyst-2960"
+    assert collector.resolve_platform(iosxe_context).metadata.family == "catalyst-2960x"
+
+
 @pytest.mark.anyio
 async def test_ios_collector_selects_ssh_before_http_and_collects_inventory() -> None:
     session = FakeCommandSession(

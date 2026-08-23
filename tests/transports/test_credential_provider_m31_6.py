@@ -42,3 +42,20 @@ def test_environment_provider_resolves_snmpv2c_community_at_execution_time(
 
     assert isinstance(credentials, SNMPv2cCredentials)
     assert credentials.community == "community-secret"
+
+
+def test_secret_provider_uses_radisson_convention_for_environment_lookup(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("NOP_SECRET_RADISSON", "expected-runtime-secret")
+
+    provider = __import__(
+        "backend.app.transports.credentials",
+        fromlist=["EnvironmentSecretProvider"],
+    ).EnvironmentSecretProvider()
+    resolved = provider.resolve_secret("Radisson")
+
+    assert resolved == "expected-runtime-secret"
+    assert resolved is not None
+    assert provider.prefix == "NOP_SECRET_"
+    assert provider.resolve_secret("Radisson") == "expected-runtime-secret"
