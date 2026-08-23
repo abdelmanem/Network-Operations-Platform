@@ -1,5 +1,6 @@
 from backend.app.core.application import ApplicationContainer, create_application
 from backend.app.core.constants import APP_NAME
+from backend.app.transports.credentials import EnvironmentSecretProvider
 
 
 def test_application_factory_exposes_container() -> None:
@@ -10,3 +11,4 @@ def test_application_factory_exposes_container() -> None:
     assert isinstance(container, ApplicationContainer)
     assert app.title == APP_NAME
     assert container.metadata.name == APP_NAME
+    assert isinstance(container.secret_provider, EnvironmentSecretProvider)

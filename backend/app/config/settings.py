@@ -17,6 +17,15 @@ class Settings(BaseSettings):
 
     app_name: str = "Network Operations Platform"
     app_env: str = "development"
+    secret_provider: str | None = Field(
+        default=None,
+        validation_alias="SECRET_PROVIDER",
+        description=(
+            "Secret backend selector. Independent of credential-profile "
+            "provider_reference. Defaults to environment in development/test. "
+            "Required and must not be environment outside those environments."
+        ),
+    )
     app_version: str = "0.1.0"
     log_level: str = "INFO"
     database_url: str = Field(

@@ -56,6 +56,5 @@ def test_secret_provider_uses_radisson_convention_for_environment_lookup(
     resolved = provider.resolve_secret("Radisson")
 
     assert resolved == "expected-runtime-secret"
-    assert resolved is not None
     assert provider.prefix == "NOP_SECRET_"
     assert provider.resolve_secret("Radisson") == "expected-runtime-secret"

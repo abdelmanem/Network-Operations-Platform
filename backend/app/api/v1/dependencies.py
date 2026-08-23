@@ -11,6 +11,7 @@ from backend.app.jobs.manager import JobManager
 
 if TYPE_CHECKING:
     from backend.app.core.application import ApplicationContainer
+    from backend.app.transports.credentials import SecretProvider
 
 
 def get_application_container(request: Request) -> ApplicationContainer:
@@ -22,6 +23,10 @@ def get_application_container(request: Request) -> ApplicationContainer:
 
 def get_job_manager(request: Request) -> JobManager:
     return get_application_container(request).job_manager
+
+
+def get_secret_provider(request: Request) -> SecretProvider:
+    return get_application_container(request).secret_provider
 
 
 def get_db_session() -> Generator[Session, None, None]:

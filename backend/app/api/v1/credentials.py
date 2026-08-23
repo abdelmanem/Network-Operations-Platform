@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.v1.dependencies import get_db_session
+from backend.app.api.v1.dependencies import get_db_session, get_secret_provider
 from backend.app.auth.api.dependencies import require_permission
 from backend.app.auth.domain.models import User
 from backend.app.persistence.discovery_repositories import CredentialProfileRepository
@@ -20,7 +20,8 @@ from backend.app.schemas.discovery import (
     CredentialProfileTestResponse,
     CredentialProfileUpdateRequest,
 )
-from backend.app.transports.credentials import EnvironmentSecretProvider
+from backend.app.transports.credentials import SecretProvider
+from backend.app.transports.secret_errors import SecretProviderError
 
 router: APIRouter = APIRouter(prefix="/credentials", tags=["credentials"])
 
@@ -147,6 +148,7 @@ def test_profile(
     db_session: Annotated[Session, Depends(get_db_session)],
     _: Annotated[User, Depends(require_permission("credential:write"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+    secret_provider: Annotated[SecretProvider, Depends(get_secret_provider)],
 ) -> CredentialProfileTestResponse:
     record = CredentialProfileRepository(db_session).get(
         tenant_id=tenant_id,
@@ -166,14 +168,15 @@ def test_profile(
             provider_reference=record.provider_reference,
         )
 
-    secret = EnvironmentSecretProvider().resolve_secret(record.provider_reference)
-    if secret is None:
+    try:
+        secret_provider.resolve_secret(record.provider_reference)
+    except SecretProviderError as exc:
         return CredentialProfileTestResponse(
-            status="invalid_credential_profile",
+            status=exc.code,
             transport=payload.transport,
             target=payload.target,
             credential_type=record.credential_type,
-            message="Credential profile is enabled but no secret was resolved for its provider reference.",
+            message=exc.message,
             provider_reference=record.provider_reference,
         )
 

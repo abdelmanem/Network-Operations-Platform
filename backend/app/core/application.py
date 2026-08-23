@@ -58,9 +58,13 @@ from backend.app.scheduler.registry import WorkerRegistry
 from backend.app.services.base import ServiceContext
 from backend.app.services.inventory import InventoryService
 from backend.app.snapshot.models import InventorySnapshotModel
-from backend.app.transports.credentials import EnvironmentCredentialProvider
+from backend.app.transports.credentials import (
+    EnvironmentCredentialProvider,
+    SecretProvider,
+)
 from backend.app.transports.http.httpx import HttpxTransport
 from backend.app.transports.manager import TransportManager
+from backend.app.transports.secret_provider import build_secret_provider
 from backend.app.transports.snmp.pysnmp import PySnmpTransport
 from backend.app.transports.ssh.netmiko import NetmikoSSHTransport
 from backend.app.transports.ssh.paramiko import ParamikoSSHTransport
@@ -177,6 +181,7 @@ class ApplicationContainer:
     job_manager: JobManager
     worker_registry: WorkerRegistry
     discovery_collector_registry: CollectorRegistry
+    secret_provider: SecretProvider
 
 
 def create_application(settings: Settings | None = None) -> FastAPI:
@@ -184,6 +189,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
 
     app_settings = settings or get_settings()
     configure_logging(app_settings.log_level)
+    secret_provider = build_secret_provider(app_settings)
 
     metadata = ApplicationMetadata(
         name=APP_NAME,
@@ -230,6 +236,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
         job_manager=job_manager,
         worker_registry=WorkerRegistry(),
         discovery_collector_registry=collector_registry,
+        secret_provider=secret_provider,
     )
 
     @asynccontextmanager

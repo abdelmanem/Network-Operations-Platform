@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
+from backend.app.transports.secret_errors import (
+    InvalidSecretReferenceError,
+    ProviderConfigurationError,
+    SecretNotFoundError,
+)
+
 if TYPE_CHECKING:
     from backend.app.transports.base import TransportContext
 
@@ -105,8 +111,12 @@ class CredentialReference:
 class SecretProvider(Protocol):
     """Resolve a secret reference without exposing secret material in API DTOs."""
 
-    def resolve_secret(self, reference: str) -> str | None:
-        """Return a secret payload for the provided secret reference."""
+    def resolve_secret(self, reference: str) -> str:
+        """Return a secret payload for the provided secret reference.
+
+        Implementations must raise SecretProviderError subclasses and must never
+        include secret material in exception messages.
+        """
 
 
 class CredentialProvider(Protocol):
@@ -120,13 +130,25 @@ class CredentialProvider(Protocol):
 
 @dataclass(slots=True)
 class EnvironmentSecretProvider:
-    """Minimal secret provider for local and test environments."""
+    """Process-environment secret provider for development and tests only."""
 
     prefix: str = "NOP_SECRET_"
 
-    def resolve_secret(self, reference: str) -> str | None:
-        key = re.sub(r"[^A-Za-z0-9_\-]", "_", reference).upper()
-        return os.getenv(f"{self.prefix}{key}")
+    def resolve_secret(self, reference: str) -> str:
+        if not self.prefix:
+            raise ProviderConfigurationError(
+                "Environment secret provider prefix is not configured."
+            )
+        cleaned = (reference or "").strip()
+        if not cleaned:
+            raise InvalidSecretReferenceError("Secret reference is invalid.")
+        key = re.sub(r"[^A-Za-z0-9_\-]", "_", cleaned).upper()
+        if not key.strip("_"):
+            raise InvalidSecretReferenceError("Secret reference is invalid.")
+        value = os.getenv(f"{self.prefix}{key}")
+        if value is None:
+            raise SecretNotFoundError("Requested secret was not found.")
+        return value
 
 
 @dataclass(slots=True)
