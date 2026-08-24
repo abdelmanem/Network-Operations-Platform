@@ -170,6 +170,18 @@ body {
   background: #991b1b;
 }
 
+.jobs-table-wrap {
+  overflow-x: auto;
+}
+
+.jobs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
 .evidence-list {
   display: grid;
   gap: 0.75rem;

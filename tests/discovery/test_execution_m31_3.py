@@ -53,6 +53,23 @@ class FailingCollector(RawCollector):
         raise TimeoutError("device discovery timed out")
 
 
+class CancellingCollector(RawCollector):
+    def __init__(self, *, session: Session, job_id) -> None:
+        super().__init__(name="cancelling", capabilities=frozenset())
+        self.session = session
+        self.job_id = job_id
+
+    async def collect(self, context: CollectorContext, *, discovered_targets):
+        DiscoveryJobRepository(self.session).request_cancellation(
+            tenant_id="tenant-a",
+            job_id=self.job_id,
+            requested_by=uuid4(),
+            reason="operator requested stop",
+        )
+        self.session.commit()
+        return await super().collect(context, discovered_targets=discovered_targets)
+
+
 class CiscoSW40EvidenceCollector(RawCollector):
     async def collect(self, context: CollectorContext, *, discovered_targets):
         return {
@@ -188,6 +205,23 @@ async def test_failed_discovery_persists_stable_timeout_code() -> None:
     assert outcome.job.state == DiscoveryJobStatus.FAILED.value
     assert outcome.job.failure_code == "DISCOVERY_TIMEOUT"
     assert outcome.job.failure_message == "device discovery timed out"
+
+
+@pytest.mark.anyio
+async def test_observed_cancellation_becomes_cancelled_not_failed() -> None:
+    session = _session()
+    job = _job(session, collector_name="cancelling")
+    registry = CollectorRegistry()
+    registry.register(CancellingCollector(session=session, job_id=job.id))
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.CANCELLED.value
+    assert outcome.job.failure_code == "CANCELLED"
+    assert outcome.job.failure_message == "operator requested stop"
+    assert session.scalars(select(DiscoveryEvidenceRecord)).all() == []
 
 
 @pytest.mark.anyio

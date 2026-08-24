@@ -24,6 +24,7 @@ def test_discovery_api_routes_are_registered_in_openapi() -> None:
     assert "/api/v1/discovery/targets" in paths
     assert "/api/v1/discovery/jobs" in paths
     assert "/api/v1/discovery/jobs/{job_id}" in paths
+    assert "/api/v1/discovery/jobs/{job_id}/cancel" in paths
     assert "/api/v1/discovery/jobs/{job_id}/evidence" in paths
     assert "post" in paths["/api/v1/comparison"]
 
@@ -49,6 +50,17 @@ def test_discovery_job_requires_authentication() -> None:
         response = client.get(
             "/api/v1/discovery/jobs",
             headers={"X-Tenant-ID": "tenant-a"},
+        )
+
+    assert response.status_code == 401
+
+
+def test_discovery_job_cancellation_requires_authentication() -> None:
+    with TestClient(create_application()) as client:
+        response = client.post(
+            "/api/v1/discovery/jobs/9c76945c-d8d0-4c46-b4bb-aeda00e43f78/cancel",
+            headers={"X-Tenant-ID": "tenant-a"},
+            json={"reason": "operator requested stop"},
         )
 
     assert response.status_code == 401

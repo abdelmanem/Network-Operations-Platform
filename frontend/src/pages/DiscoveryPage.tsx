@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   createDiscoveryApiJob,
   createDiscoveryCredentialProfile,
@@ -124,8 +125,7 @@ function getCredentialTestState(
   ) {
     return {
       label: 'Secret configured',
-      summary:
-        'The configured secret reference resolved successfully.',
+      summary: 'The configured secret reference resolved successfully.',
       action: 'Continue with device validation.',
       visualState: 'success',
     }
@@ -192,8 +192,7 @@ function getCredentialTestState(
       label: 'Timeout',
       summary:
         'The credential test did not complete within the configured timeout.',
-      action:
-        'Verify reachability and timeout conditions before retrying.',
+      action: 'Verify reachability and timeout conditions before retrying.',
       visualState: 'warning',
     }
   }
@@ -272,9 +271,7 @@ function PageStatus({
         <span className="discovery-status-indicator discovery-status-running">
           Starting
         </span>
-        <span className="discovery-status-meta">
-          Preparing discovery job…
-        </span>
+        <span className="discovery-status-meta">Preparing discovery job…</span>
       </div>
     )
   }
@@ -325,8 +322,7 @@ function OverviewPanel({
   profiles: CredentialProfileResponse[]
   job: DiscoveryApiJobResponse | null
 }) {
-  const activeJobs =
-    job && !terminalStates.has(job.status) ? 1 : 0
+  const activeJobs = job && !terminalStates.has(job.status) ? 1 : 0
 
   return (
     <section className="discovery-panel discovery-overview">
@@ -354,9 +350,7 @@ function OverviewPanel({
         </div>
         <div className="discovery-overview-item">
           <span>Selected target</span>
-          <strong>
-            {selectedTarget?.identifier || 'None'}
-          </strong>
+          <strong>{selectedTarget?.identifier || 'None'}</strong>
         </div>
       </div>
     </section>
@@ -479,13 +473,9 @@ function TargetSidebar({
                     {targetAddress(target)}
                   </span>
                   <span className="discovery-target-item-meta">
-                    <span>
-                      {formatPlatform(target.platform_hint)}
-                    </span>
+                    <span>{formatPlatform(target.platform_hint)}</span>
                     {target.preferred_transport ? (
-                      <TransportBadge
-                        transport={target.preferred_transport}
-                      />
+                      <TransportBadge transport={target.preferred_transport} />
                     ) : null}
                   </span>
                 </span>
@@ -516,7 +506,10 @@ type ProfileWithDetails = CredentialProfileResponse & {
   platform?: string | null
 }
 
-function getSecretStatus(profile: ProfileWithDetails | null, profileTestResult: CredentialProfileTestResponse | null) {
+function getSecretStatus(
+  profile: ProfileWithDetails | null,
+  profileTestResult: CredentialProfileTestResponse | null,
+) {
   if (!profile || !profile.provider_reference) {
     return {
       label: 'Missing',
@@ -566,15 +559,12 @@ function SelectedTargetPanel({
   onManageProfiles: () => void
 }) {
   const transport =
-    profile?.transport_types[0] ||
-    target?.preferred_transport ||
-    'ssh'
+    profile?.transport_types[0] || target?.preferred_transport || 'ssh'
   const secretStatus = getSecretStatus(profile, profileTestResult)
 
   if (!target) {
     const fallbackProfile = profiles[0] || null
-    const fallbackTransport =
-      fallbackProfile?.transport_types[0] || 'ssh'
+    const fallbackTransport = fallbackProfile?.transport_types[0] || 'ssh'
 
     return (
       <section className="discovery-panel discovery-target-detail">
@@ -582,16 +572,16 @@ function SelectedTargetPanel({
           <div className="discovery-empty-icon">⌁</div>
           <h2>Select a target</h2>
           <p className="muted">
-            Choose a discovery target from the sidebar to view
-            configuration and run discovery.
+            Choose a discovery target from the sidebar to view configuration and
+            run discovery.
           </p>
         </div>
 
         {profiles.length === 0 ? (
           <div className="discovery-credential-section">
             <p className="muted">
-              No credential profiles are configured. Create a profile
-              before adding targets.
+              No credential profiles are configured. Create a profile before
+              adding targets.
             </p>
             <button
               type="button"
@@ -613,10 +603,7 @@ function SelectedTargetPanel({
                   disabled
                 >
                   {profiles.map((item) => (
-                    <option
-                      key={item.profile_id}
-                      value={item.profile_id}
-                    >
+                    <option key={item.profile_id} value={item.profile_id}>
                       {item.name}
                     </option>
                   ))}
@@ -632,9 +619,7 @@ function SelectedTargetPanel({
                   </div>
                   <div className="discovery-credential-detail">
                     <span>Transport</span>
-                    <strong>
-                      {formatTransport(fallbackTransport)}
-                    </strong>
+                    <strong>{formatTransport(fallbackTransport)}</strong>
                   </div>
                   <div className="discovery-credential-detail">
                     <span>Secret</span>
@@ -722,9 +707,7 @@ function SelectedTargetPanel({
 
         {profiles.length === 0 ? (
           <>
-            <p className="muted">
-              No credential profiles are configured.
-            </p>
+            <p className="muted">No credential profiles are configured.</p>
             <button
               type="button"
               className="discovery-btn discovery-btn-secondary"
@@ -745,10 +728,7 @@ function SelectedTargetPanel({
                 >
                   <option value="">Select credential profile</option>
                   {profiles.map((item) => (
-                    <option
-                      key={item.profile_id}
-                      value={item.profile_id}
-                    >
+                    <option key={item.profile_id} value={item.profile_id}>
                       {item.name}
                     </option>
                   ))}
@@ -761,9 +741,7 @@ function SelectedTargetPanel({
                 <div className="discovery-credential-details">
                   <div className="discovery-credential-detail">
                     <span>Username</span>
-                    <strong>
-                      {profile.username || '—'}
-                    </strong>
+                    <strong>{profile.username || '—'}</strong>
                   </div>
                   <div className="discovery-credential-detail">
                     <span>Transport</span>
@@ -795,8 +773,8 @@ function SelectedTargetPanel({
                       </div>
                     </div>
                     <p className="discovery-security-note">
-                      The secret value is resolved by the backend at runtime
-                      and is never stored in or returned to the frontend.
+                      The secret value is resolved by the backend at runtime and
+                      is never stored in or returned to the frontend.
                     </p>
                   </details>
                 ) : null}
@@ -887,8 +865,7 @@ function DiscoveryExecutionPanel({
           <h2>Discovery execution</h2>
           {target ? (
             <p className="discovery-panel-subtitle">
-              Selected target: {target.identifier} ·{' '}
-              {targetAddress(target)}
+              Selected target: {target.identifier} · {targetAddress(target)}
             </p>
           ) : (
             <p className="discovery-panel-subtitle">
@@ -902,11 +879,7 @@ function DiscoveryExecutionPanel({
           disabled={!target || starting || running}
           onClick={onStartDiscovery}
         >
-          {starting
-            ? 'Starting…'
-            : running
-              ? 'Running…'
-              : 'Start discovery'}
+          {starting ? 'Starting…' : running ? 'Running…' : 'Start discovery'}
         </button>
       </div>
 
@@ -945,9 +918,7 @@ function DiscoveryExecutionPanel({
 
           {job.error_code || job.error_message ? (
             <div className="discovery-execution-error">
-              {job.error_code ? (
-                <strong>{job.error_code}: </strong>
-              ) : null}
+              {job.error_code ? <strong>{job.error_code}: </strong> : null}
               {job.error_message}
             </div>
           ) : null}
@@ -1296,10 +1267,7 @@ function AddTargetModal({
                   >
                     <option value="">Select credential profile</option>
                     {profiles.map((item) => (
-                      <option
-                        key={item.profile_id}
-                        value={item.profile_id}
-                      >
+                      <option key={item.profile_id} value={item.profile_id}>
                         {item.name}
                       </option>
                     ))}
@@ -1321,9 +1289,7 @@ function AddTargetModal({
               type="submit"
               className="discovery-btn discovery-btn-primary"
               disabled={
-                saving ||
-                profiles.length === 0 ||
-                !form.credential_profile_id
+                saving || profiles.length === 0 || !form.credential_profile_id
               }
             >
               {saving ? 'Saving target…' : 'Save target'}
@@ -1358,21 +1324,14 @@ function CredentialProfileModal({
   onCancel: () => void
 }) {
   const type =
-    credentialTypeHelp[form.credential_type] ||
-    credentialTypeHelp.ssh_password
+    credentialTypeHelp[form.credential_type] || credentialTypeHelp.ssh_password
 
   const requiresUsername =
     form.credential_type === 'ssh_password' ||
     form.credential_type === 'ssh_key' ||
     form.credential_type === 'snmp_v3'
 
-  const allowedTransports = [
-    'ssh',
-    'snmp',
-    'telnet',
-    'http',
-    'https',
-  ]
+  const allowedTransports = ['ssh', 'snmp', 'telnet', 'http', 'https']
 
   return (
     <div className="discovery-modal-backdrop">
@@ -1386,12 +1345,9 @@ function CredentialProfileModal({
           <div className="discovery-modal-header">
             <div>
               <div className="discovery-eyebrow">CREDENTIALS</div>
-              <h2 id="create-profile-title">
-                Create credential profile
-              </h2>
+              <h2 id="create-profile-title">Create credential profile</h2>
               <p className="muted">
-                Store authentication metadata without storing secret
-                material.
+                Store authentication metadata without storing secret material.
               </p>
             </div>
             <button
@@ -1410,10 +1366,9 @@ function CredentialProfileModal({
               <div>
                 <strong>Environment secret provider</strong>
                 <p className="muted">
-                  Credential secrets are not stored here. This profile
-                  stores only metadata and a provider reference. The
-                  backend resolves the secret at runtime. This is not
-                  the password.
+                  Credential secrets are not stored here. This profile stores
+                  only metadata and a provider reference. The backend resolves
+                  the secret at runtime. This is not the password.
                 </p>
               </div>
             </div>
@@ -1427,9 +1382,7 @@ function CredentialProfileModal({
                     value={form.name}
                     required
                     placeholder="e.g. Cisco SSH Production"
-                    onChange={(event) =>
-                      onChange({ name: event.target.value })
-                    }
+                    onChange={(event) => onChange({ name: event.target.value })}
                   />
                 </label>
 
@@ -1478,10 +1431,8 @@ function CredentialProfileModal({
                     const next = event.target.value
                     onChange({
                       credential_type: next,
-                      transport_types:
-                        credentialTypeHelp[next]?.transport_types || [
-                          'ssh',
-                        ],
+                      transport_types: credentialTypeHelp[next]
+                        ?.transport_types || ['ssh'],
                     })
                   }}
                 >
@@ -1527,8 +1478,7 @@ function CredentialProfileModal({
               <h3>Transport</h3>
               <div className="discovery-transport-chips">
                 {allowedTransports.map((transport) => {
-                  const selected =
-                    form.transport_types.includes(transport)
+                  const selected = form.transport_types.includes(transport)
                   const typeTransports = type.transport_types
                   const disabled =
                     typeTransports.length === 1 &&
@@ -1540,9 +1490,7 @@ function CredentialProfileModal({
                       type="button"
                       disabled={disabled}
                       className={`discovery-transport-chip ${
-                        selected
-                          ? 'discovery-transport-chip-selected'
-                          : ''
+                        selected ? 'discovery-transport-chip-selected' : ''
                       }`}
                       onClick={() => {
                         if (disabled) return
@@ -1593,6 +1541,7 @@ function CredentialProfileModal({
 }
 
 export function DiscoveryPage() {
+  const [searchParams] = useSearchParams()
   const [targets, setTargets] = useState<DiscoveryTargetResponse[]>([])
   const [profiles, setProfiles] = useState<CredentialProfileResponse[]>([])
   const [selectedTargetId, setSelectedTargetId] = useState('')
@@ -1611,12 +1560,11 @@ export function DiscoveryPage() {
   const [showProfileComposer, setShowProfileComposer] = useState(false)
   const [profileTestResult, setProfileTestResult] =
     useState<CredentialProfileTestResponse | null>(null)
+  const requestedJobId = searchParams.get('job_id')
 
   const [targetForm, setTargetForm] = useState({
     scope_type: 'single_device' as
-      | 'single_device'
-      | 'ip_range'
-      | 'cidr_network',
+      'single_device' | 'ip_range' | 'cidr_network',
     identifier: '',
     address: '',
     scope_end: '',
@@ -1639,20 +1587,15 @@ export function DiscoveryPage() {
 
   const selectedTarget = useMemo(
     () =>
-      targets.find((target) => target.target_id === selectedTargetId) ||
-      null,
+      targets.find((target) => target.target_id === selectedTargetId) || null,
     [targets, selectedTargetId],
   )
 
   const selectedProfile = useMemo(() => {
     const profileId =
-      selectedTarget?.credential_profile_id ||
-      targetForm.credential_profile_id
+      selectedTarget?.credential_profile_id || targetForm.credential_profile_id
 
-    return (
-      profiles.find((profile) => profile.profile_id === profileId) ||
-      null
-    )
+    return profiles.find((profile) => profile.profile_id === profileId) || null
   }, [profiles, selectedTarget, targetForm.credential_profile_id])
 
   async function loadTargets() {
@@ -1702,6 +1645,47 @@ export function DiscoveryPage() {
   }, [])
 
   useEffect(() => {
+    if (!requestedJobId) return
+    let disposed = false
+    const jobId = requestedJobId
+
+    async function loadRequestedJob() {
+      try {
+        const loadedJob = await getDiscoveryApiJob(jobId)
+        const loadedDevices = await getDiscoveryDeviceResults(loadedJob.job_id)
+        if (disposed) return
+        setJob(loadedJob)
+        setSelectedTargetId(loadedJob.target_id)
+        setDeviceResults(loadedDevices)
+        try {
+          const loadedEvidence = await getDiscoveryEvidence(loadedJob.job_id)
+          if (!disposed) setEvidence(loadedEvidence)
+        } catch (err) {
+          if (!disposed) {
+            setError(
+              err instanceof Error
+                ? err.message
+                : 'Unable to load discovery job evidence.',
+            )
+          }
+        }
+      } catch (err) {
+        if (disposed) return
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to load the requested discovery job.',
+        )
+      }
+    }
+
+    void loadRequestedJob()
+    return () => {
+      disposed = true
+    }
+  }, [requestedJobId])
+
+  useEffect(() => {
     if (!job || terminalStates.has(job.status)) {
       return
     }
@@ -1711,18 +1695,14 @@ export function DiscoveryPage() {
         const updated = await getDiscoveryApiJob(job.job_id)
         setJob(updated)
 
-        setDeviceResults(
-          await getDiscoveryDeviceResults(updated.job_id),
-        )
+        setDeviceResults(await getDiscoveryDeviceResults(updated.job_id))
 
         if (terminalStates.has(updated.status)) {
           setEvidence(await getDiscoveryEvidence(updated.job_id))
         }
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to poll discovery job.',
+          err instanceof Error ? err.message : 'Unable to poll discovery job.',
         )
       }
     }, 2000)
@@ -1736,8 +1716,7 @@ export function DiscoveryPage() {
     setError(null)
 
     try {
-      const tenantId =
-        window.localStorage.getItem('tenant-id') || 'default'
+      const tenantId = window.localStorage.getItem('tenant-id') || 'default'
 
       if (!targetForm.credential_profile_id) {
         throw new Error(
@@ -1748,13 +1727,9 @@ export function DiscoveryPage() {
       const created = await createDiscoveryTarget({
         ...targetForm,
         address:
-          targetForm.scope_type === 'cidr_network'
-            ? null
-            : targetForm.address,
+          targetForm.scope_type === 'cidr_network' ? null : targetForm.address,
         scope_end:
-          targetForm.scope_type === 'ip_range'
-            ? targetForm.scope_end
-            : null,
+          targetForm.scope_type === 'ip_range' ? targetForm.scope_end : null,
         scope_cidr:
           targetForm.scope_type === 'cidr_network'
             ? targetForm.scope_cidr
@@ -1776,17 +1751,12 @@ export function DiscoveryPage() {
         address: '',
         scope_end: '',
         scope_cidr: '',
-        credential_profile_id:
-          created.credential_profile_id || '',
+        credential_profile_id: created.credential_profile_id || '',
         platform_hint: 'cisco-iosxe',
         preferred_transport: 'netmiko',
       })
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to create target.',
-      )
+      setError(err instanceof Error ? err.message : 'Unable to create target.')
     } finally {
       setSavingTarget(false)
     }
@@ -1810,9 +1780,7 @@ export function DiscoveryPage() {
       }
 
       if (!payload.name || !payload.provider_reference) {
-        throw new Error(
-          'Profile name and secret reference are required.',
-        )
+        throw new Error('Profile name and secret reference are required.')
       }
 
       const requiresUsername =
@@ -1870,15 +1838,12 @@ export function DiscoveryPage() {
       profiles[0]?.profile_id
 
     if (!targetProfileId) {
-      setError(
-        'Select or create a credential profile before testing it.',
-      )
+      setError('Select or create a credential profile before testing it.')
       return
     }
 
     const profile =
-      profiles.find((item) => item.profile_id === targetProfileId) ||
-      null
+      profiles.find((item) => item.profile_id === targetProfileId) || null
 
     const transport = profile?.transport_types[0] || 'ssh'
 
@@ -1886,13 +1851,10 @@ export function DiscoveryPage() {
     setError(null)
 
     try {
-      const result = await testDiscoveryCredentialProfile(
-        targetProfileId,
-        {
-          transport,
-          target: selectedTarget?.address || 'test-target',
-        },
-      )
+      const result = await testDiscoveryCredentialProfile(targetProfileId, {
+        transport,
+        target: selectedTarget?.address || 'test-target',
+      })
 
       setProfileTestResult(result)
     } catch (err) {
@@ -1930,9 +1892,7 @@ export function DiscoveryPage() {
       setJob(created)
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to start discovery.',
+        err instanceof Error ? err.message : 'Unable to start discovery.',
       )
     } finally {
       setStarting(false)
@@ -1948,8 +1908,8 @@ export function DiscoveryPage() {
           <div className="discovery-eyebrow">NETWORK OPERATIONS</div>
           <h1>Network Discovery</h1>
           <p className="muted">
-            Discover and validate managed network devices using
-            configured credential profiles.
+            Discover and validate managed network devices using configured
+            credential profiles.
           </p>
         </div>
 
@@ -1957,9 +1917,7 @@ export function DiscoveryPage() {
           <button
             type="button"
             className="discovery-btn discovery-btn-icon"
-            onClick={() =>
-              void Promise.all([loadTargets(), loadProfiles()])
-            }
+            onClick={() => void Promise.all([loadTargets(), loadProfiles()])}
             disabled={loading}
             title="Refresh"
             aria-label="Refresh"
@@ -1970,18 +1928,11 @@ export function DiscoveryPage() {
             type="button"
             className="discovery-btn discovery-btn-primary"
             disabled={
-              !selectedTarget ||
-              !selectedProfile ||
-              starting ||
-              running
+              !selectedTarget || !selectedProfile || starting || running
             }
             onClick={() => void handleStartDiscovery()}
           >
-            {starting
-              ? 'Starting…'
-              : running
-                ? 'Running…'
-                : 'Start discovery'}
+            {starting ? 'Starting…' : running ? 'Running…' : 'Start discovery'}
           </button>
         </div>
       </header>
@@ -2030,9 +1981,7 @@ export function DiscoveryPage() {
           profileTestResult={profileTestResult}
           testingCredential={testingCredential}
           onTestCredential={() =>
-            void handleTestSelectedProfile(
-              selectedProfile?.profile_id,
-            )
+            void handleTestSelectedProfile(selectedProfile?.profile_id)
           }
           onManageProfiles={() => setShowProfileComposer(true)}
         />

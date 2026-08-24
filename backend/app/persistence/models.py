@@ -233,6 +233,13 @@ class DiscoveryJobRecord(BaseModel):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     timeout_seconds: Mapped[float | None] = mapped_column(nullable=True)
     correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cancellation_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancellation_requested_by: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     target: Mapped[DiscoveryTargetRecord] = relationship(back_populates="jobs")
     discovery_run: Mapped[DiscoveryRunRecord] = relationship(

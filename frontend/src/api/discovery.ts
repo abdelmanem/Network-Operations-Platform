@@ -5,6 +5,7 @@ import type {
   CredentialProfileTestResponse,
   DiscoveryApiJobRequest,
   DiscoveryApiJobResponse,
+  DiscoveryJobListResponse,
   DiscoveryEvidenceResponse,
   DiscoveryDeviceResultResponse,
   DiscoveryJobRequest,
@@ -14,6 +15,17 @@ import type {
   DiscoveryTargetResponse,
 } from '../types/api'
 import { api, normalizeApiError } from './client'
+
+export function discoveryJobsErrorTitle(error: string | null): string {
+  const normalized = error?.toLowerCase() ?? ''
+  if (normalized.includes('authentication') || normalized.includes('sign in')) {
+    return 'Sign in required.'
+  }
+  if (normalized.includes('permission') || normalized.includes('forbidden')) {
+    return 'Permission required.'
+  }
+  return 'Unable to load discovery jobs.'
+}
 
 export async function getDiscoveryRuns(): Promise<DiscoveryRunListResponse> {
   try {
@@ -116,6 +128,36 @@ export async function createDiscoveryApiJob(
     const response = await api.post<DiscoveryApiJobResponse>(
       '/api/v1/discovery/jobs',
       payload,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function listDiscoveryApiJobs(
+  page = 1,
+  pageSize = 20,
+): Promise<DiscoveryJobListResponse> {
+  try {
+    const response = await api.get<DiscoveryJobListResponse>(
+      '/api/v1/discovery/jobs',
+      { params: { page, page_size: pageSize } },
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function cancelDiscoveryApiJob(
+  jobId: string,
+  reason = 'Cancelled by operator',
+): Promise<DiscoveryApiJobResponse> {
+  try {
+    const response = await api.post<DiscoveryApiJobResponse>(
+      `/api/v1/discovery/jobs/${jobId}/cancel`,
+      { reason },
     )
     return response.data
   } catch (error) {

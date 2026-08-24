@@ -224,11 +224,11 @@ class CiscoInventoryCollectorBase(BaseCollector):
             "transport_capability": selection.capability.value,
         }
         if selection.capability == TransportCapability.SSH:
-            payload["commands"] = await self._collect_ssh(platform, session)
+            payload["commands"] = await self._collect_ssh(platform, session, context)
         elif selection.capability == TransportCapability.SNMP:
-            payload["snmp"] = await self._collect_snmp(platform, session)
+            payload["snmp"] = await self._collect_snmp(platform, session, context)
         elif selection.capability == TransportCapability.HTTP:
-            payload["http"] = await self._collect_http(platform, session)
+            payload["http"] = await self._collect_http(platform, session, context)
         else:  # pragma: no cover - defensive guard for future enum values
             raise CiscoInventoryCollectionError(
                 f"Unsupported transport capability: {selection.capability}"
@@ -330,12 +330,14 @@ class CiscoInventoryCollectorBase(BaseCollector):
         self,
         platform: CiscoPlatformDefinition,
         session: object,
+        context: CollectorContext,
     ) -> dict[str, str]:
         if not isinstance(session, CommandSession):
             raise CiscoInventoryCollectionError("Selected SSH session cannot execute.")
 
         commands: dict[str, str] = {}
         for command in self._inventory_commands(platform):
+            self._check_cancellation(context)
             if command in commands:
                 continue
             commands[command] = await session.execute(command)
@@ -345,16 +347,19 @@ class CiscoInventoryCollectorBase(BaseCollector):
         self,
         platform: CiscoPlatformDefinition,
         session: object,
+        context: CollectorContext,
     ) -> dict[str, list[tuple[str, str]]]:
         if not isinstance(session, SnmpWalkSession):
             raise CiscoInventoryCollectionError("Selected SNMP session cannot walk.")
 
         results: dict[str, list[tuple[str, str]]] = {}
         for group in SNMP_GROUPS:
+            self._check_cancellation(context)
             if not self._snmp_group_supported(platform, group):
                 continue
             rows: list[tuple[str, str]] = []
             for oid in platform.snmp_catalog.oids(group):
+                self._check_cancellation(context)
                 walk_rows = await session.walk(oid)
                 rows.extend((name, str(value)) for name, value in walk_rows)
             if rows:
@@ -365,15 +370,23 @@ class CiscoInventoryCollectorBase(BaseCollector):
         self,
         platform: CiscoPlatformDefinition,
         session: object,
+        context: CollectorContext,
     ) -> dict[str, str]:
         if not isinstance(session, HttpRequestSession):
             raise CiscoInventoryCollectionError("Selected HTTP session cannot request.")
 
         responses: dict[str, str] = {}
         for endpoint in platform.http_catalog.endpoints:
+            self._check_cancellation(context)
             response = await session.request(endpoint.method.value, endpoint.path)
             responses[endpoint.path] = await self._response_text(response)
         return responses
+
+    @staticmethod
+    def _check_cancellation(context: CollectorContext) -> None:
+        check = context.metadata.get("cancellation_check")
+        if callable(check):
+            check()
 
     def _inventory_commands(self, platform: CiscoPlatformDefinition) -> tuple[str, ...]:
         commands: list[str] = []

@@ -5,11 +5,23 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Annotated, cast
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.api.v1.dependencies import get_application_container, get_db_session
+from backend.app.audit.api.router import get_audit_service
+from backend.app.audit.application.services import AuditService
 from backend.app.auth.api.dependencies import require_permission
 from backend.app.auth.domain.models import User
 from backend.app.collectors.registry import CollectorRegistry
@@ -21,10 +33,12 @@ from backend.app.normalization.engine import NormalizationEngine
 from backend.app.parsers.pipeline import ParserPipeline
 from backend.app.persistence.discovery_repositories import (
     CredentialProfileRepository,
+    DiscoveryCancellationConflictError,
     DiscoveryEvidenceRepository,
     DiscoveryJobRepository,
     DiscoveryPersistenceError,
     DiscoveryTargetRepository,
+    InvalidDiscoveryTransitionError,
 )
 from backend.app.persistence.models import (
     DiscoveryDeviceResultRecord,
@@ -41,6 +55,8 @@ from backend.app.schemas.discovery import (
     CredentialProfileResponse,
     DiscoveryDeviceResultResponse,
     DiscoveryEvidenceResponse,
+    DiscoveryJobCancellationRequest,
+    DiscoveryJobListResponse,
     DiscoveryJobRequest,
     DiscoveryJobResponse,
     DiscoveryTargetRequest,
@@ -161,7 +177,7 @@ def create_job(
     payload: DiscoveryJobRequest,
     background_tasks: BackgroundTasks,
     db_session: Annotated[Session, Depends(get_db_session)],
-    _: Annotated[User, Depends(require_permission("discovery:job:submit"))],
+    user: Annotated[User, Depends(require_permission("discovery:job:submit"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
     container: Annotated[object, Depends(get_application_container)],
 ) -> DiscoveryJobResponse:
@@ -191,6 +207,7 @@ def create_job(
             requested_capabilities=payload.requested_capabilities,
             timeout_seconds=payload.timeout_seconds,
             correlation_id=payload.correlation_id,
+            created_by=user.id,
         )
         db_session.commit()
     except DiscoveryPersistenceError as exc:
@@ -209,20 +226,84 @@ def create_job(
     return _job_response(job)
 
 
+@router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=DiscoveryJobResponse,
+    summary="Request cooperative cancellation of a discovery job",
+)
+def cancel_job(
+    job_id: UUID,
+    payload: DiscoveryJobCancellationRequest,
+    request: Request,
+    response: Response,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    user: Annotated[User, Depends(require_permission("discovery:job:cancel"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
+) -> DiscoveryJobResponse:
+    jobs = DiscoveryJobRepository(db_session)
+    try:
+        job, changed = jobs.request_cancellation(
+            tenant_id=tenant_id,
+            job_id=job_id,
+            requested_by=user.id,
+            reason=payload.reason,
+        )
+        db_session.commit()
+    except DiscoveryCancellationConflictError as exc:
+        db_session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DiscoveryPersistenceError as exc:
+        db_session.rollback()
+        raise HTTPException(
+            status_code=404, detail="Discovery job was not found."
+        ) from exc
+
+    audit_service.record_api_activity(
+        event_type="discovery.job_cancel_requested",
+        actor_id=user.id,
+        tenant_id=tenant_id,
+        resource_type="discovery_job",
+        resource_id=str(job.id),
+        outcome="cancelled" if job.state == "cancelled" else "requested",
+        request_id=request.headers.get("X-Request-ID"),
+        metadata={
+            "reason": payload.reason,
+            "changed": changed,
+            "requested_at": (
+                job.cancellation_requested_at.isoformat()
+                if job.cancellation_requested_at is not None
+                else None
+            ),
+        },
+    )
+    if job.state == DiscoveryJobStatus.RUNNING.value:
+        response.status_code = status.HTTP_202_ACCEPTED
+    return _job_response(job)
+
+
 @router.get(
     "/jobs",
-    response_model=list[DiscoveryJobResponse],
+    response_model=DiscoveryJobListResponse,
     summary="List discovery jobs",
 )
 def list_jobs(
     db_session: Annotated[Session, Depends(get_db_session)],
     _: Annotated[User, Depends(require_permission("discovery:job:read"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
-) -> list[DiscoveryJobResponse]:
-    return [
-        _job_response(record)
-        for record in DiscoveryJobRepository(db_session).list(tenant_id=tenant_id)
-    ]
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
+) -> DiscoveryJobListResponse:
+    records, total = DiscoveryJobRepository(db_session).list_page(
+        tenant_id=tenant_id, page=page, page_size=page_size
+    )
+    return DiscoveryJobListResponse(
+        items=[_job_response(record) for record in records],
+        page=page,
+        page_size=page_size,
+        total=total,
+        has_next=page * page_size < total,
+    )
 
 
 @router.get(
@@ -364,26 +445,43 @@ async def _execute_job(
     db_session = SessionLocal()
     try:
         job = DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
-        if job is None:
+        if job is None or job.state == DiscoveryJobStatus.CANCELLED.value:
             return
         target = DiscoveryTargetRepository(db_session).get(
             tenant_id=tenant_id, target_id=job.target_id
         )
         if target is not None and target.scope_type in {"ip_range", "cidr_network"}:
-            DiscoveryJobRepository(db_session).claim(tenant_id=tenant_id, job_id=job_id)
-            db_session.commit()
-            results = await DiscoveryFanoutService(
-                db_session, collector_registry, concurrency=10
-            ).execute(tenant_id=tenant_id, parent_job_id=job_id)
-            final_state = (
-                DiscoveryJobStatus.SUCCEEDED
-                if any(result.state == "succeeded" for result in results)
-                else DiscoveryJobStatus.FAILED
-            )
-            DiscoveryJobRepository(db_session).transition(
-                tenant_id=tenant_id, job_id=job_id, target_state=final_state
-            )
-            db_session.commit()
+            try:
+                DiscoveryJobRepository(db_session).claim(
+                    tenant_id=tenant_id, job_id=job_id
+                )
+                db_session.commit()
+                results = await DiscoveryFanoutService(
+                    db_session, collector_registry, concurrency=10
+                ).execute(tenant_id=tenant_id, parent_job_id=job_id)
+                jobs = DiscoveryJobRepository(db_session)
+                if jobs.cancellation_requested(tenant_id=tenant_id, job_id=job_id):
+                    jobs.finalise_cancellation(tenant_id=tenant_id, job_id=job_id)
+                else:
+                    final_state = (
+                        DiscoveryJobStatus.SUCCEEDED
+                        if any(result.state == "succeeded" for result in results)
+                        else DiscoveryJobStatus.FAILED
+                    )
+                    jobs.transition(
+                        tenant_id=tenant_id,
+                        job_id=job_id,
+                        target_state=final_state,
+                        require_no_cancellation=True,
+                    )
+                db_session.commit()
+            except InvalidDiscoveryTransitionError:
+                db_session.rollback()
+                jobs = DiscoveryJobRepository(db_session)
+                if not jobs.cancellation_requested(tenant_id=tenant_id, job_id=job_id):
+                    raise
+                jobs.finalise_cancellation(tenant_id=tenant_id, job_id=job_id)
+                db_session.commit()
         else:
             service = DiscoveryExecutionService(
                 db_session,
@@ -444,6 +542,9 @@ def _job_response(record: DiscoveryJobRecord) -> DiscoveryJobResponse:
             "finished_at": record.completed_at,
             "timeout_seconds": record.timeout_seconds,
             "correlation_id": record.correlation_id,
+            "cancellation_requested_at": record.cancellation_requested_at,
+            "cancellation_requested_by": record.cancellation_requested_by,
+            "cancellation_reason": record.cancellation_reason,
         }
     )
 

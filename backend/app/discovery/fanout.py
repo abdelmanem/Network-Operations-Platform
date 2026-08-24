@@ -12,7 +12,10 @@ from backend.app.collectors.registry import CollectorRegistry
 from backend.app.discovery.contracts import DiscoveryScopeType
 from backend.app.discovery.execution import DiscoveryExecutionService
 from backend.app.discovery.scopes import DiscoveryScope
-from backend.app.persistence.discovery_repositories import DiscoveryJobRepository
+from backend.app.persistence.discovery_repositories import (
+    DiscoveryCancellationConflictError,
+    DiscoveryJobRepository,
+)
 from backend.app.persistence.models import (
     DiscoveryDeviceResultRecord,
     DiscoveryJobRecord,
@@ -51,6 +54,9 @@ class DiscoveryFanoutService:
         target = self.session.get(DiscoveryTargetRecord, parent.target_id)
         if target is None:
             raise ValueError("Discovery scope target was not found.")
+        jobs = DiscoveryJobRepository(self.session)
+        if jobs.cancellation_requested(tenant_id=tenant_id, job_id=parent_job_id):
+            return ()
 
         addresses = DiscoveryScope(
             scope_type=DiscoveryScopeType(target.scope_type),
@@ -58,23 +64,36 @@ class DiscoveryFanoutService:
             scope_end=target.scope_end,
             scope_cidr=target.scope_cidr,
         ).expand(max_targets=self.max_targets)
-        children = [
-            self._create_child(tenant_id, parent, target, address)
-            for address in addresses
-        ]
+        children: list[tuple[DiscoveryJobRecord, DiscoveryDeviceResultRecord]] = []
+        for address in addresses:
+            if jobs.cancellation_requested(tenant_id=tenant_id, job_id=parent_job_id):
+                break
+            children.append(self._create_child(tenant_id, parent, target, address))
         self.session.commit()
         semaphore = asyncio.Semaphore(self.concurrency)
 
         async def run_child(
             child: DiscoveryJobRecord, result: DiscoveryDeviceResultRecord
         ) -> None:
+            if jobs.cancellation_requested(tenant_id=tenant_id, job_id=parent_job_id):
+                self._cancel_child(parent, child, result)
+                return
             async with semaphore:
+                if jobs.cancellation_requested(
+                    tenant_id=tenant_id, job_id=parent_job_id
+                ):
+                    self._cancel_child(parent, child, result)
+                    return
                 result.state = "discovering"
                 result.started_at = datetime.now(UTC)
                 self.session.commit()
                 outcome = await DiscoveryExecutionService(
                     self.session, self.collector_registry
-                ).execute(tenant_id=tenant_id, job_id=child.id)
+                ).execute(
+                    tenant_id=tenant_id,
+                    job_id=child.id,
+                    parent_job_id=parent_job_id,
+                )
                 result.state = outcome.job.state
                 result.selected_transport = outcome.job.selected_transport
                 result.failure_code = outcome.job.failure_code
@@ -84,6 +103,35 @@ class DiscoveryFanoutService:
 
         await asyncio.gather(*(run_child(child, result) for child, result in children))
         return tuple(result for _, result in children)
+
+    def _cancel_child(
+        self,
+        parent: DiscoveryJobRecord,
+        child: DiscoveryJobRecord,
+        result: DiscoveryDeviceResultRecord,
+    ) -> None:
+        reason = parent.cancellation_reason or "Cancelled by operator."
+        requested_by = parent.cancellation_requested_by
+        if requested_by is not None:
+            try:
+                child_job, _ = DiscoveryJobRepository(
+                    self.session
+                ).request_cancellation(
+                    tenant_id=parent.tenant_id,
+                    job_id=child.id,
+                    requested_by=requested_by,
+                    reason=reason,
+                )
+                result.state = child_job.state
+            except DiscoveryCancellationConflictError:
+                # A concurrently completed child remains intact.
+                return
+        else:
+            result.state = "cancelled"
+        result.failure_code = "CANCELLED"
+        result.failure_message = reason
+        result.completed_at = datetime.now(UTC)
+        self.session.commit()
 
     def _create_child(
         self,

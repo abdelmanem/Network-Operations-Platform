@@ -30,6 +30,7 @@ DEFAULT_ADMIN_PERMISSIONS = (
     "discovery:target:write",
     "discovery:job:submit",
     "discovery:job:read",
+    "discovery:job:cancel",
     "discovery:evidence:read",
     "inventory:read",
     "inventory:write",

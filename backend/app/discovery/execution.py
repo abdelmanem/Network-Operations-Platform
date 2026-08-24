@@ -53,6 +53,10 @@ class DiscoveryExecutionOutcome:
     evidence_count: int = 0
 
 
+class DiscoveryCancellationRequestedError(Exception):
+    """Internal cooperative cancellation signal for durable discovery."""
+
+
 class DiscoveryExecutionService:
     """Execute raw discovery and persist traceable immutable evidence."""
 
@@ -74,6 +78,7 @@ class DiscoveryExecutionService:
         self.normalization_engine = normalization_engine or NormalizationEngine()
         self.snapshot_mapper = snapshot_mapper or SnapshotMapper()
         self.snapshots = SnapshotRepository(session)
+        self._parent_job_id: UUID | None = None
 
     @staticmethod
     def _default_parser_pipeline() -> ParserPipeline:
@@ -86,9 +91,11 @@ class DiscoveryExecutionService:
         *,
         tenant_id: str,
         job_id: UUID,
+        parent_job_id: UUID | None = None,
     ) -> DiscoveryExecutionOutcome:
         """Claim and execute one durable discovery job."""
 
+        self._parent_job_id = parent_job_id
         attempt: DiscoveryTransportAttemptRecord | None = None
         try:
             job = self.jobs.claim(tenant_id=tenant_id, job_id=job_id)
@@ -104,6 +111,7 @@ class DiscoveryExecutionService:
 
         try:
             target = self._resolve_target(job, tenant_id)
+            self._raise_if_cancelled(tenant_id, job.id)
             if not target.enabled:
                 raise DiscoveryExecutionFailureError(
                     DiscoveryFailureCode.TARGET_DISABLED,
@@ -112,7 +120,9 @@ class DiscoveryExecutionService:
 
             collector, context = self._resolve_collector(job, target)
             attempt = self._start_transport_attempt(job, target)
+            self._raise_if_cancelled(tenant_id, job.id)
             await collector.health_check(context)
+            self._raise_if_cancelled(tenant_id, job.id)
             raw_payload = await self._collect(collector, context)
             if attempt is not None:
                 self.attempts.finish(
@@ -131,11 +141,13 @@ class DiscoveryExecutionService:
                     target.metadata.get("platform_family"),
                 ),
             )
+            self._raise_if_cancelled(tenant_id, job.id)
             evidence = self._build_evidence(job, target, collector, raw_payload)
             self.evidence.create(evidence)
             # Raw evidence is an immutable audit artifact and must survive a
             # downstream parser or normalization failure.
             self.session.commit()
+            self._raise_if_cancelled(tenant_id, job.id)
             collector_parser = getattr(collector, "parser", None)
             processed = process_collector_payload(
                 parser_pipeline=self.parser_pipeline,
@@ -147,6 +159,7 @@ class DiscoveryExecutionService:
                 metadata=dict(context.metadata),
                 raw_payload=raw_payload,
             )
+            self._raise_if_cancelled(tenant_id, job.id)
             self.snapshots.add_live_snapshot(
                 processed.normalized_result.snapshot,
                 discovery_run_id=job.run_id,
@@ -159,10 +172,12 @@ class DiscoveryExecutionService:
                     raw_payload, "transport", target.metadata.get("transport_name")
                 ),
             )
+            self._raise_if_cancelled(tenant_id, job.id)
             completed = self.jobs.transition(
                 tenant_id=tenant_id,
                 job_id=job.id,
                 target_state=DiscoveryJobStatus.SUCCEEDED,
+                require_no_cancellation=True,
             )
             self.session.commit()
             return DiscoveryExecutionOutcome(
@@ -170,7 +185,31 @@ class DiscoveryExecutionService:
                 executed=True,
                 evidence_count=1,
             )
+        except DiscoveryCancellationRequestedError:
+            if attempt is not None:
+                self.attempts.finish(
+                    attempt,
+                    result="cancelled",
+                    failure_code=DiscoveryFailureCode.CANCELLED.value,
+                )
+            cancelled = self.jobs.finalise_cancellation(
+                tenant_id=tenant_id, job_id=job.id
+            )
+            self.session.commit()
+            return DiscoveryExecutionOutcome(job=cancelled, executed=True)
         except Exception as exc:
+            if self.jobs.cancellation_requested(tenant_id=tenant_id, job_id=job.id):
+                if attempt is not None:
+                    self.attempts.finish(
+                        attempt,
+                        result="cancelled",
+                        failure_code=DiscoveryFailureCode.CANCELLED.value,
+                    )
+                cancelled = self.jobs.finalise_cancellation(
+                    tenant_id=tenant_id, job_id=job.id
+                )
+                self.session.commit()
+                return DiscoveryExecutionOutcome(job=cancelled, executed=True)
             failure_code = self._failure_code(exc)
             failure_message = self._safe_failure_message(exc)
             if attempt is not None:
@@ -260,7 +299,12 @@ class DiscoveryExecutionService:
             target=discovery_target,
             required_capabilities=capabilities,
             run_id=job.run_id,
-            metadata={"job_id": str(job.id)},
+            metadata={
+                "job_id": str(job.id),
+                "cancellation_check": lambda: self._raise_if_cancelled(
+                    target.tenant_id, job.id
+                ),
+            },
         )
         try:
             if isinstance(collector_name, str) and collector_name:
@@ -286,6 +330,23 @@ class DiscoveryExecutionService:
     ) -> dict[str, object]:
         payload = await collector.collect(context, discovered_targets=())
         return dict(payload)
+
+    def _raise_if_cancelled(self, tenant_id: str, job_id: UUID) -> None:
+        if self.jobs.cancellation_requested(tenant_id=tenant_id, job_id=job_id):
+            raise DiscoveryCancellationRequestedError()
+        if self._parent_job_id is None or not self.jobs.cancellation_requested(
+            tenant_id=tenant_id, job_id=self._parent_job_id
+        ):
+            return
+        parent = self.jobs.get(tenant_id=tenant_id, job_id=self._parent_job_id)
+        if parent is not None and parent.cancellation_requested_by is not None:
+            self.jobs.request_cancellation(
+                tenant_id=tenant_id,
+                job_id=job_id,
+                requested_by=parent.cancellation_requested_by,
+                reason=parent.cancellation_reason or "Cancelled by operator.",
+            )
+        raise DiscoveryCancellationRequestedError()
 
     def _record_device_result(
         self,
@@ -415,6 +476,7 @@ class DiscoveryExecutionFailureError(RuntimeError):
 
 
 __all__ = [
+    "DiscoveryCancellationRequestedError",
     "DiscoveryExecutionFailureError",
     "DiscoveryExecutionOutcome",
     "DiscoveryExecutionService",

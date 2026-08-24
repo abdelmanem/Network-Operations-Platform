@@ -190,7 +190,7 @@ export interface DiscoveryApiJobResponse {
   job_id: string
   tenant_id: string
   target_id: string
-  discovery_run_id: string
+  discovery_run_id: string | null
   status:
     'queued' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'cancelled'
   selected_transport: string | null
@@ -204,6 +204,17 @@ export interface DiscoveryApiJobResponse {
   finished_at: string | null
   timeout_seconds: number | null
   correlation_id: string | null
+  cancellation_requested_at: string | null
+  cancellation_requested_by: string | null
+  cancellation_reason: string | null
+}
+
+export interface DiscoveryJobListResponse {
+  items: DiscoveryApiJobResponse[]
+  page: number
+  page_size: number
+  total: number
+  has_next: boolean
 }
 
 export interface DiscoveryEvidenceResponse {

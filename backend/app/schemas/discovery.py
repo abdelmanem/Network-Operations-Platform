@@ -255,6 +255,12 @@ class DiscoveryJobRequest(BaseModel):
         return value
 
 
+class DiscoveryJobCancellationRequest(BaseModel):
+    """Operator request for cooperative cancellation of a discovery job."""
+
+    reason: str = Field(default="Cancelled by operator", min_length=1, max_length=1024)
+
+
 class DiscoveryJobResponse(BaseModel):
     """Durable discovery job status contract."""
 
@@ -274,6 +280,15 @@ class DiscoveryJobResponse(BaseModel):
     finished_at: datetime | None = None
     timeout_seconds: float | None = Field(default=None, ge=0.0)
     correlation_id: str | None = None
+    cancellation_requested_at: datetime | None = None
+    cancellation_requested_by: UUID | None = None
+    cancellation_reason: str | None = None
+
+
+class DiscoveryJobListResponse(PaginatedResponse[DiscoveryJobResponse]):
+    """Tenant-scoped page of durable discovery jobs."""
+
+    pass
 
 
 class DiscoveryEvidenceResponse(BaseModel):

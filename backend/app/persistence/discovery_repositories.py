@@ -9,13 +9,14 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.discovery.contracts import (
     DiscoveryEvidence,
+    DiscoveryFailureCode,
     DiscoveryJobStatus,
     transition_job,
 )
@@ -43,6 +44,10 @@ class DiscoveryResourceNotFoundError(DiscoveryPersistenceError):
 
 class InvalidDiscoveryTransitionError(DiscoveryPersistenceError):
     """Raised when a job transition violates the M31 state machine."""
+
+
+class DiscoveryCancellationConflictError(DiscoveryPersistenceError):
+    """Raised when a terminal discovery job cannot be cancelled."""
 
 
 def _utc_now() -> datetime:
@@ -172,7 +177,9 @@ class CredentialProfileRepository:
         self.session.flush()
         return record
 
-    def get(self, *, tenant_id: str, profile_id: UUID) -> CredentialProfileRecord | None:
+    def get(
+        self, *, tenant_id: str, profile_id: UUID
+    ) -> CredentialProfileRecord | None:
         statement = select(CredentialProfileRecord).where(
             CredentialProfileRecord.id == profile_id,
             CredentialProfileRecord.tenant_id == tenant_id,
@@ -306,6 +313,24 @@ class DiscoveryJobRepository:
         )
         return tuple(self.session.scalars(statement).all())
 
+    def list_page(
+        self, *, tenant_id: str, page: int, page_size: int
+    ) -> tuple[tuple[DiscoveryJobRecord, ...], int]:
+        """Return one ordered page and the tenant-scoped total."""
+
+        filters = (DiscoveryJobRecord.tenant_id == tenant_id,)
+        total = self.session.scalar(
+            select(func.count()).select_from(DiscoveryJobRecord).where(*filters)
+        )
+        statement = (
+            select(DiscoveryJobRecord)
+            .where(*filters)
+            .order_by(DiscoveryJobRecord.requested_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return tuple(self.session.scalars(statement).all()), int(total or 0)
+
     def claim(self, *, tenant_id: str, job_id: UUID) -> DiscoveryJobRecord:
         """Atomically transition one queued job to running."""
 
@@ -347,6 +372,7 @@ class DiscoveryJobRepository:
         target_state: DiscoveryJobStatus,
         failure_code: str | None = None,
         failure_message: str | None = None,
+        require_no_cancellation: bool = False,
     ) -> DiscoveryJobRecord:
         """Apply one validated durable state transition."""
 
@@ -366,17 +392,107 @@ class DiscoveryJobRepository:
             values["failure_code"] = failure_code
         if failure_message is not None:
             values["failure_message"] = failure_message
-        self.session.execute(
-            update(DiscoveryJobRecord)
-            .where(
-                DiscoveryJobRecord.id == job_id,
-                DiscoveryJobRecord.tenant_id == tenant_id,
-                DiscoveryJobRecord.state == job.state,
-            )
-            .values(**values)
+        statement = update(DiscoveryJobRecord).where(
+            DiscoveryJobRecord.id == job_id,
+            DiscoveryJobRecord.tenant_id == tenant_id,
+            DiscoveryJobRecord.state == job.state,
         )
+        if require_no_cancellation:
+            statement = statement.where(
+                DiscoveryJobRecord.cancellation_requested_at.is_(None)
+            )
+        result = self.session.execute(statement.values(**values))
+        if result.rowcount != 1:
+            self.session.rollback()
+            raise InvalidDiscoveryTransitionError(
+                "Discovery job changed state before transition could be applied."
+            )
         self.session.flush()
         return self.get(tenant_id=tenant_id, job_id=job_id)  # type: ignore[return-value]
+
+    def request_cancellation(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        requested_by: UUID,
+        reason: str,
+    ) -> tuple[DiscoveryJobRecord, bool]:
+        """Persist a cancellation request, atomically cancelling queued work."""
+
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            raise DiscoveryResourceNotFoundError("Discovery job was not found.")
+        if DiscoveryJobStatus(job.state).is_terminal:
+            if job.state == DiscoveryJobStatus.CANCELLED.value:
+                return job, False
+            raise DiscoveryCancellationConflictError(
+                f"Discovery job is already {job.state}."
+            )
+        if job.cancellation_requested_at is not None:
+            return job, False
+
+        now = _utc_now()
+        values: dict[str, object] = {
+            "cancellation_requested_at": now,
+            "cancellation_requested_by": requested_by,
+            "cancellation_reason": reason,
+            "updated_at": now,
+        }
+        if job.state == DiscoveryJobStatus.QUEUED.value:
+            values.update(
+                state=DiscoveryJobStatus.CANCELLED.value,
+                completed_at=now,
+                failure_code=DiscoveryFailureCode.CANCELLED.value,
+                failure_message=reason,
+            )
+        statement = update(DiscoveryJobRecord).where(
+            DiscoveryJobRecord.id == job_id,
+            DiscoveryJobRecord.tenant_id == tenant_id,
+            DiscoveryJobRecord.state == job.state,
+        )
+        result = self.session.execute(statement.values(**values))
+        if result.rowcount != 1:
+            self.session.rollback()
+            current = self.get(tenant_id=tenant_id, job_id=job_id)
+            if (
+                current is not None
+                and current.state == DiscoveryJobStatus.CANCELLED.value
+            ):
+                return current, False
+            raise DiscoveryCancellationConflictError(
+                "Discovery job changed state before cancellation could be applied."
+            )
+        self.session.flush()
+        return self.get(tenant_id=tenant_id, job_id=job_id), True  # type: ignore[return-value]
+
+    def cancellation_requested(self, *, tenant_id: str, job_id: UUID) -> bool:
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        return bool(
+            job is not None
+            and (
+                job.cancellation_requested_at is not None
+                or job.state == DiscoveryJobStatus.CANCELLED.value
+            )
+        )
+
+    def finalise_cancellation(
+        self, *, tenant_id: str, job_id: UUID
+    ) -> DiscoveryJobRecord:
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            raise DiscoveryResourceNotFoundError("Discovery job was not found.")
+        if job.state == DiscoveryJobStatus.CANCELLED.value:
+            return job
+        if job.cancellation_requested_at is None:
+            raise InvalidDiscoveryTransitionError("Cancellation was not requested.")
+        return self.transition(
+            tenant_id=tenant_id,
+            job_id=job_id,
+            target_state=DiscoveryJobStatus.CANCELLED,
+            failure_code=DiscoveryFailureCode.CANCELLED.value,
+            failure_message=job.cancellation_reason or "Cancelled by operator.",
+        )
 
     def record_selection(
         self,
@@ -427,6 +543,7 @@ class DiscoveryJobRepository:
             target_state=DiscoveryJobStatus.FAILED,
             failure_code=failure_code,
             failure_message=failure_message,
+            require_no_cancellation=True,
         )
 
 
@@ -557,6 +674,7 @@ class DiscoveryEvidenceRepository:
 __all__ = [
     "CredentialProfileRepository",
     "DiscoveryEvidenceRepository",
+    "DiscoveryCancellationConflictError",
     "DiscoveryJobRepository",
     "DiscoveryPersistenceError",
     "DiscoveryResourceNotFoundError",

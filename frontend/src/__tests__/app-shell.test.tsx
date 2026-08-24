@@ -7,13 +7,13 @@ const {
   mockGetCurrentUser,
   mockGetDashboardKpis,
   mockGetDashboardTrends,
-  mockGetJobs,
+  mockListDiscoveryJobs,
 } = vi.hoisted(() => ({
   mockLogin: vi.fn(),
   mockGetCurrentUser: vi.fn(),
   mockGetDashboardKpis: vi.fn(),
   mockGetDashboardTrends: vi.fn(),
-  mockGetJobs: vi.fn(),
+  mockListDiscoveryJobs: vi.fn(),
 }))
 
 vi.mock('../services/api', () => ({
@@ -26,9 +26,8 @@ vi.mock('../api/dashboard', () => ({
   getDashboardTrends: mockGetDashboardTrends,
 }))
 
-vi.mock('../api/jobs', () => ({
-  getJobs: mockGetJobs,
-  cancelJob: vi.fn(),
+vi.mock('../api/discovery', () => ({
+  listDiscoveryApiJobs: mockListDiscoveryJobs,
 }))
 
 describe('frontend foundation shell', () => {
@@ -98,7 +97,7 @@ describe('frontend foundation shell', () => {
         },
       },
     })
-    mockGetJobs.mockResolvedValue({
+    mockListDiscoveryJobs.mockResolvedValue({
       items: [],
       page: 1,
       page_size: 20,
@@ -110,7 +109,9 @@ describe('frontend foundation shell', () => {
   it('renders the login screen when unauthenticated', () => {
     window.history.pushState({}, '', '/login')
     render(<App />)
-    expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /sign in/i }),
+    ).toBeInTheDocument()
   })
 
   it('shows an authentication failure message', async () => {
@@ -130,7 +131,11 @@ describe('frontend foundation shell', () => {
   })
 
   it('authenticates successfully and shows the dashboard shell', async () => {
-    mockLogin.mockResolvedValueOnce({ access_token: 'token', refresh_token: 'refresh', token_type: 'bearer' })
+    mockLogin.mockResolvedValueOnce({
+      access_token: 'token',
+      refresh_token: 'refresh',
+      token_type: 'bearer',
+    })
     window.history.pushState({}, '', '/login')
     render(<App />)
 
@@ -143,7 +148,9 @@ describe('frontend foundation shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /dashboard/i }),
+      ).toBeInTheDocument()
     })
   })
 
@@ -151,7 +158,9 @@ describe('frontend foundation shell', () => {
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /sign in/i }),
+    ).toBeInTheDocument()
   })
 
   it('renders shell navigation and the jobs empty state', async () => {
@@ -159,14 +168,20 @@ describe('frontend foundation shell', () => {
     window.history.pushState({}, '', '/jobs')
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: /jobs/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /jobs/i }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('navigation')).toBeInTheDocument()
-    expect(await screen.findByText(/no jobs have been created yet/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/no discovery jobs have been created yet/i),
+    ).toBeInTheDocument()
   })
 
   it('shows a dashboard error state when the backend contract is unavailable', async () => {
     mockGetDashboardKpis.mockRejectedValueOnce(new Error('Service unavailable'))
-    mockGetDashboardTrends.mockRejectedValueOnce(new Error('Service unavailable'))
+    mockGetDashboardTrends.mockRejectedValueOnce(
+      new Error('Service unavailable'),
+    )
     localStorage.setItem('auth-token', 'token')
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
@@ -183,6 +198,8 @@ describe('frontend foundation shell', () => {
       expect(screen.getByText(/operations dashboard/i)).toBeInTheDocument()
     })
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }))
-    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /sign in/i }),
+    ).toBeInTheDocument()
   })
 })
