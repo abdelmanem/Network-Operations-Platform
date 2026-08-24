@@ -33,3 +33,11 @@ class InventoryListResponse(PaginatedResponse[DeviceSnapshotItem]):
         description="When the snapshot was captured"
     )
     device_count: int = Field(description="Total number of devices in snapshot")
+    manufacturers: list[str] = Field(
+        default_factory=list,
+        description="Available manufacturer filters for the complete snapshot",
+    )
+    platforms: list[str] = Field(
+        default_factory=list,
+        description="Available platform filters for the complete snapshot",
+    )

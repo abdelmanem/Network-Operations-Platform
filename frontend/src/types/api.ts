@@ -285,6 +285,8 @@ export interface InventoryListResponse {
   snapshot_id: string | null
   snapshot_captured_at: string | null
   device_count: number
+  manufacturers: string[]
+  platforms: string[]
 }
 
 // Snapshot types

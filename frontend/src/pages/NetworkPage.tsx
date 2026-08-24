@@ -7,10 +7,15 @@ import { compareDevice } from '../api/devices'
 import {
   listLiveInventory,
   listNetboxInventory,
+  type InventoryQuery,
 } from '../api/inventory'
-import { getSnapshot, listDeviceInterfaces, listDeviceNeighbors, listDeviceVlans } from '../api/snapshots'
+import {
+  getSnapshot,
+  listDeviceInterfaces,
+  listDeviceNeighbors,
+  listDeviceVlans,
+} from '../api/snapshots'
 import type {
-  DeviceSnapshotItem,
   DeviceComparisonResponse,
   InterfaceListResponse,
   InventoryListResponse,
@@ -20,39 +25,16 @@ import type {
 } from '../types/api'
 import './NetworkPage.css'
 
-type PageSection = 'overview' | 'expected' | 'live' | 'variance' | 'comparison' | 'detail'
+type PageSection =
+  'overview' | 'expected' | 'live' | 'variance' | 'comparison' | 'detail'
 type DetailView = 'interfaces' | 'vlans' | 'neighbors' | null
-type InventorySortKey = 'name' | 'model' | 'serial_number' | 'platform' | 'management_ip'
+type InventorySortKey =
+  'name' | 'model' | 'serial_number' | 'platform' | 'management_ip'
 type SortDirection = 'asc' | 'desc'
 
 interface LoadState {
   state: 'loading' | 'ready' | 'empty' | 'error'
   error?: string
-}
-
-const inventoryValue = (value: string | null | undefined) => value?.trim() || '—'
-
-function inventoryMatchesSearch(device: DeviceSnapshotItem, query: string) {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
-  if (!normalizedQuery) return true
-
-  return Object.values(device).some((value) =>
-    String(value ?? '').toLocaleLowerCase().includes(normalizedQuery),
-  )
-}
-
-function sortInventory(
-  items: DeviceSnapshotItem[],
-  sortKey: InventorySortKey,
-  direction: SortDirection,
-) {
-  const factor = direction === 'asc' ? 1 : -1
-  return [...items].sort((left, right) =>
-    inventoryValue(left[sortKey]).localeCompare(inventoryValue(right[sortKey]), undefined, {
-      numeric: true,
-      sensitivity: 'base',
-    }) * factor,
-  )
 }
 
 export function NetworkPage() {
@@ -62,8 +44,10 @@ export function NetworkPage() {
   const [detailView, setDetailView] = useState<DetailView>(null)
 
   // Inventory data
-  const [netboxInventory, setNetboxInventory] = useState<InventoryListResponse | null>(null)
-  const [liveInventory, setLiveInventory] = useState<InventoryListResponse | null>(null)
+  const [netboxInventory, setNetboxInventory] =
+    useState<InventoryListResponse | null>(null)
+  const [liveInventory, setLiveInventory] =
+    useState<InventoryListResponse | null>(null)
   const [netboxPage, setNetboxPage] = useState(1)
   const [livePage, setLivePage] = useState(1)
   const [netboxSearch, setNetboxSearch] = useState('')
@@ -72,81 +56,118 @@ export function NetworkPage() {
   const [liveManufacturer, setLiveManufacturer] = useState('')
   const [netboxPlatform, setNetboxPlatform] = useState('')
   const [livePlatform, setLivePlatform] = useState('')
-  const [netboxSort, setNetboxSort] = useState<{ key: InventorySortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' })
-  const [liveSort, setLiveSort] = useState<{ key: InventorySortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' })
+  const [netboxSort, setNetboxSort] = useState<{
+    key: InventorySortKey
+    direction: SortDirection
+  }>({ key: 'name', direction: 'asc' })
+  const [liveSort, setLiveSort] = useState<{
+    key: InventorySortKey
+    direction: SortDirection
+  }>({ key: 'name', direction: 'asc' })
 
   // Comparison data
-  const [comparison, setComparison] = useState<DeviceComparisonResponse | null>(null)
+  const [comparison, setComparison] = useState<DeviceComparisonResponse | null>(
+    null,
+  )
 
   // Detail data
-  const [detailSnapshot, setDetailSnapshot] = useState<SnapshotResponse | null>(null)
-  const [detailInterfaces, setDetailInterfaces] = useState<InterfaceListResponse | null>(null)
+  const [detailSnapshot, setDetailSnapshot] = useState<SnapshotResponse | null>(
+    null,
+  )
+  const [detailInterfaces, setDetailInterfaces] =
+    useState<InterfaceListResponse | null>(null)
   const [detailVlans, setDetailVlans] = useState<VlanListResponse | null>(null)
-  const [detailNeighbors, setDetailNeighbors] = useState<NeighborListResponse | null>(null)
+  const [detailNeighbors, setDetailNeighbors] =
+    useState<NeighborListResponse | null>(null)
 
   // Load states
-  const [netboxState, setNetboxState] = useState<LoadState>({ state: 'loading' })
+  const [netboxState, setNetboxState] = useState<LoadState>({
+    state: 'loading',
+  })
   const [liveState, setLiveState] = useState<LoadState>({ state: 'loading' })
-  const [comparisonState, setComparisonState] = useState<LoadState>({ state: 'loading' })
-  const [detailState, setDetailState] = useState<LoadState>({ state: 'loading' })
+  const [comparisonState, setComparisonState] = useState<LoadState>({
+    state: 'loading',
+  })
+  const [detailState, setDetailState] = useState<LoadState>({
+    state: 'loading',
+  })
 
   // Load NetBox inventory
-  const loadNetboxInventory = useCallback(
-    async (page: number = 1) => {
-      setNetboxState({ state: 'loading' })
-      try {
-        const data = await listNetboxInventory(page, 50)
-        setNetboxInventory(data)
-        setNetboxPage(page)
-        setNetboxState({ state: data.items.length === 0 ? 'empty' : 'ready' })
-      } catch (err) {
-        setNetboxState({
-          state: 'error',
-          error: err instanceof Error ? err.message : 'Failed to load NetBox inventory',
-        })
-      }
-    },
-    [],
+  const netboxQuery = useMemo<InventoryQuery>(
+    () => ({
+      search: netboxSearch || undefined,
+      manufacturer: netboxManufacturer || undefined,
+      platform: netboxPlatform || undefined,
+      sort_by: netboxSort.key,
+      sort_direction: netboxSort.direction,
+    }),
+    [netboxManufacturer, netboxPlatform, netboxSearch, netboxSort],
   )
+  const liveQuery = useMemo<InventoryQuery>(
+    () => ({
+      search: liveSearch || undefined,
+      manufacturer: liveManufacturer || undefined,
+      platform: livePlatform || undefined,
+      sort_by: liveSort.key,
+      sort_direction: liveSort.direction,
+    }),
+    [liveManufacturer, livePlatform, liveSearch, liveSort],
+  )
+
+  const loadNetboxInventory = useCallback(async (page: number = 1) => {
+    setNetboxState({ state: 'loading' })
+    try {
+      const data = await listNetboxInventory(page, 50, netboxQuery)
+      setNetboxInventory(data)
+      setNetboxPage(page)
+      setNetboxState({ state: data.items.length === 0 ? 'empty' : 'ready' })
+    } catch (err) {
+      setNetboxState({
+        state: 'error',
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Failed to load NetBox inventory',
+      })
+    }
+  }, [netboxQuery])
 
   // Load live inventory
-  const loadLiveInventory = useCallback(
-    async (page: number = 1) => {
-      setLiveState({ state: 'loading' })
-      try {
-        const data = await listLiveInventory(page, 50)
-        setLiveInventory(data)
-        setLivePage(page)
-        setLiveState({ state: data.items.length === 0 ? 'empty' : 'ready' })
-      } catch (err) {
-        setLiveState({
-          state: 'error',
-          error: err instanceof Error ? err.message : 'Failed to load live inventory',
-        })
-      }
-    },
-    [],
-  )
+  const loadLiveInventory = useCallback(async (page: number = 1) => {
+    setLiveState({ state: 'loading' })
+    try {
+      const data = await listLiveInventory(page, 50, liveQuery)
+      setLiveInventory(data)
+      setLivePage(page)
+      setLiveState({ state: data.items.length === 0 ? 'empty' : 'ready' })
+    } catch (err) {
+      setLiveState({
+        state: 'error',
+        error:
+          err instanceof Error ? err.message : 'Failed to load live inventory',
+      })
+    }
+  }, [liveQuery])
 
   // Load device comparison
-  const loadComparison = useCallback(
-    async (deviceId: string) => {
-      setComparisonState({ state: 'loading' })
-      try {
-        const data = await compareDevice(deviceId)
-        setComparison(data)
-        setSelectedDeviceId(deviceId)
-        setCurrentSection('comparison')
-        setComparisonState({ state: 'ready' })
-      } catch (err) {
-        setComparisonState({
-          state: 'error',
-          error: err instanceof Error ? err.message : 'Failed to load device comparison',
-        })
-      }
-    },
-    [],
-  )
+  const loadComparison = useCallback(async (deviceId: string) => {
+    setComparisonState({ state: 'loading' })
+    try {
+      const data = await compareDevice(deviceId)
+      setComparison(data)
+      setSelectedDeviceId(deviceId)
+      setCurrentSection('comparison')
+      setComparisonState({ state: 'ready' })
+    } catch (err) {
+      setComparisonState({
+        state: 'error',
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Failed to load device comparison',
+      })
+    }
+  }, [])
 
   // Load device detail
   const loadDeviceDetail = useCallback(
@@ -173,18 +194,27 @@ export function NetworkPage() {
       } catch (err) {
         setDetailState({
           state: 'error',
-          error: err instanceof Error ? err.message : 'Failed to load device details',
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to load device details',
         })
       }
     },
     [],
   )
 
-  // Initial load
+  // Reload from the server whenever search, filters, or sorting changes.
+  // Filtering and sorting therefore apply to the complete snapshot, not just one page.
   useEffect(() => {
-    void loadNetboxInventory(1)
-    void loadLiveInventory(1)
-  }, [loadNetboxInventory, loadLiveInventory])
+    const timeoutId = window.setTimeout(() => void loadNetboxInventory(1), 250)
+    return () => window.clearTimeout(timeoutId)
+  }, [loadNetboxInventory])
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => void loadLiveInventory(1), 250)
+    return () => window.clearTimeout(timeoutId)
+  }, [loadLiveInventory])
 
   // Compute variance summary
   const varianceSummary = useMemo(() => {
@@ -193,8 +223,12 @@ export function NetworkPage() {
     const netboxIds = new Set(netboxInventory.items.map((d) => d.device_id))
     const liveIds = new Set(liveInventory.items.map((d) => d.device_id))
 
-    const missing = Array.from(netboxIds).filter((id) => !liveIds.has(id)).length
-    const unexpected = Array.from(liveIds).filter((id) => !netboxIds.has(id)).length
+    const missing = Array.from(netboxIds).filter(
+      (id) => !liveIds.has(id),
+    ).length
+    const unexpected = Array.from(liveIds).filter(
+      (id) => !netboxIds.has(id),
+    ).length
     const common = Array.from(netboxIds).filter((id) => liveIds.has(id)).length
 
     return {
@@ -223,13 +257,14 @@ export function NetworkPage() {
   // Map a variance's difference_type to a diff-badge class, same fallback
   // ladder as the original inline color ternary.
   const varianceBadgeClass = (differenceType: string) => {
-    const key = differenceType === 'MISSING'
-      ? 'missing'
-      : differenceType === 'UNEXPECTED'
-        ? 'unexpected'
-        : differenceType === 'MODIFIED'
-          ? 'modified'
-          : 'default'
+    const key =
+      differenceType === 'MISSING'
+        ? 'missing'
+        : differenceType === 'UNEXPECTED'
+          ? 'unexpected'
+          : differenceType === 'MODIFIED'
+            ? 'modified'
+            : 'default'
     return `network-diff-badge network-diff-badge-${key}`
   }
 
@@ -242,8 +277,8 @@ export function NetworkPage() {
     platform: string,
     setPlatform: (value: string) => void,
   ) => {
-    const manufacturers = [...new Set(inventory.items.map((device) => device.manufacturer).filter(Boolean))].sort()
-    const platforms = [...new Set(inventory.items.map((device) => device.platform).filter(Boolean))].sort()
+    const manufacturers = inventory.manufacturers || []
+    const platforms = inventory.platforms || []
 
     return (
       <div className="network-table-controls">
@@ -259,16 +294,30 @@ export function NetworkPage() {
         </label>
         <label>
           <span>Manufacturer</span>
-          <select value={manufacturer} onChange={(event) => setManufacturer(event.target.value)}>
+          <select
+            value={manufacturer}
+            onChange={(event) => setManufacturer(event.target.value)}
+          >
             <option value="">All manufacturers</option>
-            {manufacturers.map((value) => <option key={value} value={value!}>{value}</option>)}
+            {manufacturers.map((value) => (
+              <option key={value} value={value!}>
+                {value}
+              </option>
+            ))}
           </select>
         </label>
         <label>
           <span>Platform</span>
-          <select value={platform} onChange={(event) => setPlatform(event.target.value)}>
+          <select
+            value={platform}
+            onChange={(event) => setPlatform(event.target.value)}
+          >
             <option value="">All platforms</option>
-            {platforms.map((value) => <option key={value} value={value!}>{value}</option>)}
+            {platforms.map((value) => (
+              <option key={value} value={value!}>
+                {value}
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -279,14 +328,33 @@ export function NetworkPage() {
     label: string,
     key: InventorySortKey,
     sort: { key: InventorySortKey; direction: SortDirection },
-    setSort: (value: { key: InventorySortKey; direction: SortDirection }) => void,
+    setSort: (value: {
+      key: InventorySortKey
+      direction: SortDirection
+    }) => void,
   ) => {
     const isActive = sort.key === key
-    const nextDirection: SortDirection = isActive && sort.direction === 'asc' ? 'desc' : 'asc'
+    const nextDirection: SortDirection =
+      isActive && sort.direction === 'asc' ? 'desc' : 'asc'
     return (
-      <th aria-sort={isActive ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
-        <button type="button" className="network-sort-button" onClick={() => setSort({ key, direction: nextDirection })}>
-          {label} <span aria-hidden="true">{isActive ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+      <th
+        aria-sort={
+          isActive
+            ? sort.direction === 'asc'
+              ? 'ascending'
+              : 'descending'
+            : 'none'
+        }
+      >
+        <button
+          type="button"
+          className="network-sort-button"
+          onClick={() => setSort({ key, direction: nextDirection })}
+        >
+          {label}{' '}
+          <span aria-hidden="true">
+            {isActive ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+          </span>
         </button>
       </th>
     )
@@ -331,7 +399,9 @@ export function NetworkPage() {
       {netboxInventory && (
         <div className="network-meta-line">
           <p>
-            <strong>Expected State:</strong> {formatTimestamp(netboxInventory.snapshot_captured_at)} (Source: {netboxInventory.source})
+            <strong>Expected State:</strong>{' '}
+            {formatTimestamp(netboxInventory.snapshot_captured_at)} (Source:{' '}
+            {netboxInventory.source})
           </p>
         </div>
       )}
@@ -339,7 +409,9 @@ export function NetworkPage() {
       {liveInventory && (
         <div className="network-meta-line">
           <p>
-            <strong>Observed State:</strong> {formatTimestamp(liveInventory.snapshot_captured_at)} (Source: {liveInventory.source})
+            <strong>Observed State:</strong>{' '}
+            {formatTimestamp(liveInventory.snapshot_captured_at)} (Source:{' '}
+            {liveInventory.source})
           </p>
         </div>
       )}
@@ -363,11 +435,15 @@ export function NetworkPage() {
 
       <div className="network-callout">
         <h3>Discovery & Jobs</h3>
-        <p className="muted">Manage network discovery runs and view job status.</p>
+        <p className="muted">
+          Manage network discovery runs and view job status.
+        </p>
         <Link to="/discovery" className="network-link">
           View Discovery →
         </Link>
-        <Link to="/jobs" className="network-link">View Jobs →</Link>
+        <Link to="/jobs" className="network-link">
+          View Jobs →
+        </Link>
       </div>
     </div>
   )
@@ -393,24 +469,20 @@ export function NetworkPage() {
       return (
         <div className="card">
           <h2>Expected Network State — NetBox</h2>
-          <EmptyState title="No Snapshot" message="No NetBox snapshot found. Run discovery first." />
+          <EmptyState
+            title="No Snapshot"
+            message="No NetBox snapshot found. Run discovery first."
+          />
           <div className="network-back">
-            <Link to="/discovery" className="network-link">Start Discovery →</Link>
+            <Link to="/discovery" className="network-link">
+              Start Discovery →
+            </Link>
           </div>
         </div>
       )
     }
 
     const inventory = netboxInventory!
-    const filteredItems = sortInventory(
-      inventory.items.filter((device) =>
-        inventoryMatchesSearch(device, netboxSearch)
-        && (!netboxManufacturer || device.manufacturer === netboxManufacturer)
-        && (!netboxPlatform || device.platform === netboxPlatform),
-      ),
-      netboxSort.key,
-      netboxSort.direction,
-    )
     return (
       <div className="card">
         <h2>Expected Network State — NetBox</h2>
@@ -419,23 +491,58 @@ export function NetworkPage() {
           {formatTimestamp(inventory.snapshot_captured_at)}
         </p>
 
-        {renderInventoryControls(inventory, netboxSearch, setNetboxSearch, netboxManufacturer, setNetboxManufacturer, netboxPlatform, setNetboxPlatform)}
-        <p className="network-result-count">Showing {filteredItems.length} of {inventory.items.length} devices on this page</p>
+        {renderInventoryControls(
+          inventory,
+          netboxSearch,
+          setNetboxSearch,
+          netboxManufacturer,
+          setNetboxManufacturer,
+          netboxPlatform,
+          setNetboxPlatform,
+        )}
+        <p className="network-result-count">
+          Showing {inventory.items.length} of {inventory.total} matching devices
+        </p>
 
         <div className="network-table-wrap">
           <table className="network-table">
             <thead>
               <tr>
-                {renderSortableHeader('Device', 'name', netboxSort, setNetboxSort)}
-                {renderSortableHeader('Model', 'model', netboxSort, setNetboxSort)}
-                {renderSortableHeader('Serial', 'serial_number', netboxSort, setNetboxSort)}
-                {renderSortableHeader('Platform', 'platform', netboxSort, setNetboxSort)}
-                {renderSortableHeader('Management IP', 'management_ip', netboxSort, setNetboxSort)}
+                {renderSortableHeader(
+                  'Device',
+                  'name',
+                  netboxSort,
+                  setNetboxSort,
+                )}
+                {renderSortableHeader(
+                  'Model',
+                  'model',
+                  netboxSort,
+                  setNetboxSort,
+                )}
+                {renderSortableHeader(
+                  'Serial',
+                  'serial_number',
+                  netboxSort,
+                  setNetboxSort,
+                )}
+                {renderSortableHeader(
+                  'Platform',
+                  'platform',
+                  netboxSort,
+                  setNetboxSort,
+                )}
+                {renderSortableHeader(
+                  'Management IP',
+                  'management_ip',
+                  netboxSort,
+                  setNetboxSort,
+                )}
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filteredItems.map((device) => (
+              {inventory.items.map((device) => (
                 <tr key={device.device_id}>
                   <td>{device.name || device.device_id}</td>
                   <td>{device.model || '—'}</td>
@@ -453,8 +560,12 @@ export function NetworkPage() {
                   </td>
                 </tr>
               ))}
-              {filteredItems.length === 0 && (
-                <tr><td colSpan={6} className="network-no-results">No devices match the current search and filters.</td></tr>
+              {inventory.items.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="network-no-results">
+                    No devices match the current search and filters.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -517,24 +628,20 @@ export function NetworkPage() {
       return (
         <div className="card">
           <h2>Observed Network State — Live Discovery</h2>
-          <EmptyState title="No Snapshot" message="No live snapshot found. Run discovery first." />
+          <EmptyState
+            title="No Snapshot"
+            message="No live snapshot found. Run discovery first."
+          />
           <div className="network-back">
-            <Link to="/discovery" className="network-link">Start Discovery →</Link>
+            <Link to="/discovery" className="network-link">
+              Start Discovery →
+            </Link>
           </div>
         </div>
       )
     }
 
     const inventory = liveInventory!
-    const filteredItems = sortInventory(
-      inventory.items.filter((device) =>
-        inventoryMatchesSearch(device, liveSearch)
-        && (!liveManufacturer || device.manufacturer === liveManufacturer)
-        && (!livePlatform || device.platform === livePlatform),
-      ),
-      liveSort.key,
-      liveSort.direction,
-    )
     return (
       <div className="card">
         <h2>Observed Network State — Live Discovery</h2>
@@ -543,8 +650,18 @@ export function NetworkPage() {
           {formatTimestamp(inventory.snapshot_captured_at)}
         </p>
 
-        {renderInventoryControls(inventory, liveSearch, setLiveSearch, liveManufacturer, setLiveManufacturer, livePlatform, setLivePlatform)}
-        <p className="network-result-count">Showing {filteredItems.length} of {inventory.items.length} devices on this page</p>
+        {renderInventoryControls(
+          inventory,
+          liveSearch,
+          setLiveSearch,
+          liveManufacturer,
+          setLiveManufacturer,
+          livePlatform,
+          setLivePlatform,
+        )}
+        <p className="network-result-count">
+          Showing {inventory.items.length} of {inventory.total} matching devices
+        </p>
 
         <div className="network-table-wrap">
           <table className="network-table">
@@ -552,14 +669,29 @@ export function NetworkPage() {
               <tr>
                 {renderSortableHeader('Device', 'name', liveSort, setLiveSort)}
                 {renderSortableHeader('Model', 'model', liveSort, setLiveSort)}
-                {renderSortableHeader('Serial', 'serial_number', liveSort, setLiveSort)}
-                {renderSortableHeader('Platform', 'platform', liveSort, setLiveSort)}
-                {renderSortableHeader('Management IP', 'management_ip', liveSort, setLiveSort)}
+                {renderSortableHeader(
+                  'Serial',
+                  'serial_number',
+                  liveSort,
+                  setLiveSort,
+                )}
+                {renderSortableHeader(
+                  'Platform',
+                  'platform',
+                  liveSort,
+                  setLiveSort,
+                )}
+                {renderSortableHeader(
+                  'Management IP',
+                  'management_ip',
+                  liveSort,
+                  setLiveSort,
+                )}
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filteredItems.map((device) => (
+              {inventory.items.map((device) => (
                 <tr key={device.device_id}>
                   <td>{device.name || device.device_id}</td>
                   <td>{device.model || '—'}</td>
@@ -577,8 +709,12 @@ export function NetworkPage() {
                   </td>
                 </tr>
               ))}
-              {filteredItems.length === 0 && (
-                <tr><td colSpan={6} className="network-no-results">No devices match the current search and filters.</td></tr>
+              {inventory.items.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="network-no-results">
+                    No devices match the current search and filters.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -647,7 +783,9 @@ export function NetworkPage() {
       <div className="card">
         <h2>Device Comparison: {comp.device_id}</h2>
         {comp.compared_at && (
-          <p className="muted">Compared at {formatTimestamp(comp.compared_at)}</p>
+          <p className="muted">
+            Compared at {formatTimestamp(comp.compared_at)}
+          </p>
         )}
 
         <div className="network-diff">
@@ -660,9 +798,15 @@ export function NetworkPage() {
                   {[
                     { label: 'Name', value: comp.expected_state.name },
                     { label: 'Model', value: comp.expected_state.model },
-                    { label: 'Serial', value: comp.expected_state.serial_number },
+                    {
+                      label: 'Serial',
+                      value: comp.expected_state.serial_number,
+                    },
                     { label: 'Platform', value: comp.expected_state.platform },
-                    { label: 'Management IP', value: comp.expected_state.management_ip },
+                    {
+                      label: 'Management IP',
+                      value: comp.expected_state.management_ip,
+                    },
                     {
                       label: 'Manufacturer',
                       value: comp.expected_state.manufacturer,
@@ -693,9 +837,15 @@ export function NetworkPage() {
                   {[
                     { label: 'Name', value: comp.observed_state.name },
                     { label: 'Model', value: comp.observed_state.model },
-                    { label: 'Serial', value: comp.observed_state.serial_number },
+                    {
+                      label: 'Serial',
+                      value: comp.observed_state.serial_number,
+                    },
                     { label: 'Platform', value: comp.observed_state.platform },
-                    { label: 'Management IP', value: comp.observed_state.management_ip },
+                    {
+                      label: 'Management IP',
+                      value: comp.observed_state.management_ip,
+                    },
                     {
                       label: 'Manufacturer',
                       value: comp.observed_state.manufacturer,
@@ -764,7 +914,11 @@ export function NetworkPage() {
               onClick={() => {
                 if (comp.expected_state) {
                   const snapshotId = comp.comparison_result_id || ''
-                  void loadDeviceDetail(snapshotId, comp.device_id, 'interfaces')
+                  void loadDeviceDetail(
+                    snapshotId,
+                    comp.device_id,
+                    'interfaces',
+                  )
                 }
               }}
             >
@@ -844,7 +998,10 @@ export function NetworkPage() {
     return (
       <div className="card">
         <h2>
-          {selectedDeviceId} — {detailView ? detailView.charAt(0).toUpperCase() + detailView.slice(1) : ''}
+          {selectedDeviceId} —{' '}
+          {detailView
+            ? detailView.charAt(0).toUpperCase() + detailView.slice(1)
+            : ''}
         </h2>
         {detailSnapshot && (
           <p className="muted">
@@ -870,10 +1027,11 @@ export function NetworkPage() {
                     <td>{iface.name}</td>
                     <td>{iface.description || '—'}</td>
                     <td>
-                      {iface.admin_status || '—'} /{' '}
-                      {iface.oper_status || '—'}
+                      {iface.admin_status || '—'} / {iface.oper_status || '—'}
                     </td>
-                    <td>{iface.speed_mbps ? `${iface.speed_mbps} Mbps` : '—'}</td>
+                    <td>
+                      {iface.speed_mbps ? `${iface.speed_mbps} Mbps` : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
