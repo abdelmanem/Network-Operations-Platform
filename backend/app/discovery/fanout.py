@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -47,6 +48,9 @@ class DiscoveryFanoutService:
         *,
         tenant_id: str,
         parent_job_id: UUID,
+        execution_owner: UUID,
+        lease_seconds: float,
+        lease_lost: Callable[[], bool] | None = None,
     ) -> tuple[DiscoveryDeviceResultRecord, ...]:
         parent = self.session.get(DiscoveryJobRecord, parent_job_id)
         if parent is None or parent.tenant_id != tenant_id:
@@ -93,6 +97,9 @@ class DiscoveryFanoutService:
                     tenant_id=tenant_id,
                     job_id=child.id,
                     parent_job_id=parent_job_id,
+                    execution_owner=execution_owner,
+                    lease_seconds=lease_seconds,
+                    lease_lost=lease_lost,
                 )
                 result.state = outcome.job.state
                 result.selected_transport = outcome.job.selected_transport

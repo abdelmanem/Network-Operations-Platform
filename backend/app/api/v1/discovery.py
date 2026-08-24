@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Header,
     HTTPException,
@@ -175,11 +175,10 @@ def create_credential_profile(
 )
 def create_job(
     payload: DiscoveryJobRequest,
-    background_tasks: BackgroundTasks,
     db_session: Annotated[Session, Depends(get_db_session)],
     user: Annotated[User, Depends(require_permission("discovery:job:submit"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
-    container: Annotated[object, Depends(get_application_container)],
+    _: Annotated[object, Depends(get_application_container)],
 ) -> DiscoveryJobResponse:
     target = DiscoveryTargetRepository(db_session).get(
         tenant_id=tenant_id, target_id=payload.target_id
@@ -214,15 +213,6 @@ def create_job(
         db_session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    runtime_container = cast("ApplicationContainer", container)
-    background_tasks.add_task(
-        _execute_job,
-        tenant_id,
-        job.id,
-        runtime_container.discovery_collector_registry,
-        runtime_container.discovery_parser_pipeline,
-        runtime_container.discovery_normalization_engine,
-    )
     return _job_response(job)
 
 
@@ -441,6 +431,10 @@ async def _execute_job(
     collector_registry: CollectorRegistry,
     parser_pipeline: ParserPipeline,
     normalization_engine: NormalizationEngine,
+    execution_owner: UUID,
+    lease_seconds: float,
+    already_claimed: bool = False,
+    lease_lost: Callable[[], bool] | None = None,
 ) -> None:
     db_session = SessionLocal()
     try:
@@ -452,16 +446,30 @@ async def _execute_job(
         )
         if target is not None and target.scope_type in {"ip_range", "cidr_network"}:
             try:
-                DiscoveryJobRepository(db_session).claim(
-                    tenant_id=tenant_id, job_id=job_id
-                )
-                db_session.commit()
+                if not already_claimed:
+                    DiscoveryJobRepository(db_session).claim(
+                        tenant_id=tenant_id,
+                        job_id=job_id,
+                        execution_owner=execution_owner,
+                        lease_seconds=lease_seconds,
+                    )
+                    db_session.commit()
                 results = await DiscoveryFanoutService(
                     db_session, collector_registry, concurrency=10
-                ).execute(tenant_id=tenant_id, parent_job_id=job_id)
+                ).execute(
+                    tenant_id=tenant_id,
+                    parent_job_id=job_id,
+                    execution_owner=execution_owner,
+                    lease_seconds=lease_seconds,
+                    lease_lost=lease_lost,
+                )
                 jobs = DiscoveryJobRepository(db_session)
                 if jobs.cancellation_requested(tenant_id=tenant_id, job_id=job_id):
-                    jobs.finalise_cancellation(tenant_id=tenant_id, job_id=job_id)
+                    jobs.finalise_cancellation(
+                        tenant_id=tenant_id,
+                        job_id=job_id,
+                        expected_execution_owner=execution_owner,
+                    )
                 else:
                     final_state = (
                         DiscoveryJobStatus.SUCCEEDED
@@ -473,6 +481,7 @@ async def _execute_job(
                         job_id=job_id,
                         target_state=final_state,
                         require_no_cancellation=True,
+                        expected_execution_owner=execution_owner,
                     )
                 db_session.commit()
             except InvalidDiscoveryTransitionError:
@@ -480,7 +489,11 @@ async def _execute_job(
                 jobs = DiscoveryJobRepository(db_session)
                 if not jobs.cancellation_requested(tenant_id=tenant_id, job_id=job_id):
                     raise
-                jobs.finalise_cancellation(tenant_id=tenant_id, job_id=job_id)
+                jobs.finalise_cancellation(
+                    tenant_id=tenant_id,
+                    job_id=job_id,
+                    expected_execution_owner=execution_owner,
+                )
                 db_session.commit()
         else:
             service = DiscoveryExecutionService(
@@ -489,7 +502,14 @@ async def _execute_job(
                 parser_pipeline=parser_pipeline,
                 normalization_engine=normalization_engine,
             )
-            await service.execute(tenant_id=tenant_id, job_id=job_id)
+            await service.execute(
+                tenant_id=tenant_id,
+                job_id=job_id,
+                execution_owner=execution_owner,
+                lease_seconds=lease_seconds,
+                already_claimed=already_claimed,
+                lease_lost=lease_lost,
+            )
     finally:
         db_session.close()
 

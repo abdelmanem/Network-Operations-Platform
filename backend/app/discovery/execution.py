@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import UUID
+from collections.abc import Callable
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,6 +58,10 @@ class DiscoveryCancellationRequestedError(Exception):
     """Internal cooperative cancellation signal for durable discovery."""
 
 
+class DiscoveryLeaseLostError(Exception):
+    """Stop work at a safe boundary after lease renewal fails."""
+
+
 class DiscoveryExecutionService:
     """Execute raw discovery and persist traceable immutable evidence."""
 
@@ -79,6 +84,8 @@ class DiscoveryExecutionService:
         self.snapshot_mapper = snapshot_mapper or SnapshotMapper()
         self.snapshots = SnapshotRepository(session)
         self._parent_job_id: UUID | None = None
+        self._execution_owner: UUID | None = None
+        self._lease_lost: Callable[[], bool] | None = None
 
     @staticmethod
     def _default_parser_pipeline() -> ParserPipeline:
@@ -92,14 +99,36 @@ class DiscoveryExecutionService:
         tenant_id: str,
         job_id: UUID,
         parent_job_id: UUID | None = None,
+        execution_owner: UUID | None = None,
+        lease_seconds: float = 120.0,
+        already_claimed: bool = False,
+        lease_lost: Callable[[], bool] | None = None,
     ) -> DiscoveryExecutionOutcome:
         """Claim and execute one durable discovery job."""
 
         self._parent_job_id = parent_job_id
+        self._execution_owner = execution_owner or uuid4()
+        self._lease_lost = lease_lost
         attempt: DiscoveryTransportAttemptRecord | None = None
         try:
-            job = self.jobs.claim(tenant_id=tenant_id, job_id=job_id)
-            self.session.commit()
+            if already_claimed:
+                job = self.jobs.owned_running_job(
+                    tenant_id=tenant_id,
+                    job_id=job_id,
+                    execution_owner=self._execution_owner,
+                )
+                if job is None:
+                    raise InvalidDiscoveryTransitionError(
+                        "Discovery job is not owned by this worker."
+                    )
+            else:
+                job = self.jobs.claim(
+                    tenant_id=tenant_id,
+                    job_id=job_id,
+                    execution_owner=self._execution_owner,
+                    lease_seconds=lease_seconds,
+                )
+                self.session.commit()
         except InvalidDiscoveryTransitionError as exc:
             self.session.rollback()
             existing = self.jobs.get(tenant_id=tenant_id, job_id=job_id)
@@ -178,6 +207,7 @@ class DiscoveryExecutionService:
                 job_id=job.id,
                 target_state=DiscoveryJobStatus.SUCCEEDED,
                 require_no_cancellation=True,
+                expected_execution_owner=self._execution_owner,
             )
             self.session.commit()
             return DiscoveryExecutionOutcome(
@@ -194,9 +224,16 @@ class DiscoveryExecutionService:
                 )
             cancelled = self.jobs.finalise_cancellation(
                 tenant_id=tenant_id, job_id=job.id
+                , expected_execution_owner=self._execution_owner
             )
             self.session.commit()
             return DiscoveryExecutionOutcome(job=cancelled, executed=True)
+        except DiscoveryLeaseLostError:
+            self.session.rollback()
+            current = self.jobs.get(tenant_id=tenant_id, job_id=job.id)
+            if current is None:
+                raise DiscoveryResourceNotFoundError("Discovery job was not found.")
+            return DiscoveryExecutionOutcome(job=current, executed=False)
         except Exception as exc:
             if self.jobs.cancellation_requested(tenant_id=tenant_id, job_id=job.id):
                 if attempt is not None:
@@ -207,6 +244,7 @@ class DiscoveryExecutionService:
                     )
                 cancelled = self.jobs.finalise_cancellation(
                     tenant_id=tenant_id, job_id=job.id
+                    , expected_execution_owner=self._execution_owner
                 )
                 self.session.commit()
                 return DiscoveryExecutionOutcome(job=cancelled, executed=True)
@@ -224,6 +262,7 @@ class DiscoveryExecutionService:
                     job_id=job.id,
                     failure_code=failure_code.value,
                     failure_message=failure_message,
+                    expected_execution_owner=self._execution_owner,
                 )
                 self.session.commit()
             except Exception:
@@ -332,6 +371,8 @@ class DiscoveryExecutionService:
         return dict(payload)
 
     def _raise_if_cancelled(self, tenant_id: str, job_id: UUID) -> None:
+        if self._lease_lost is not None and self._lease_lost():
+            raise DiscoveryLeaseLostError()
         if self.jobs.cancellation_requested(tenant_id=tenant_id, job_id=job_id):
             raise DiscoveryCancellationRequestedError()
         if self._parent_job_id is None or not self.jobs.cancellation_requested(
@@ -477,6 +518,7 @@ class DiscoveryExecutionFailureError(RuntimeError):
 
 __all__ = [
     "DiscoveryCancellationRequestedError",
+    "DiscoveryLeaseLostError",
     "DiscoveryExecutionFailureError",
     "DiscoveryExecutionOutcome",
     "DiscoveryExecutionService",

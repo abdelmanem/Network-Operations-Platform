@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -299,11 +299,32 @@ class DiscoveryJobRepository:
         return record
 
     def get(self, *, tenant_id: str, job_id: UUID) -> DiscoveryJobRecord | None:
-        statement = select(DiscoveryJobRecord).where(
-            DiscoveryJobRecord.id == job_id,
-            DiscoveryJobRecord.tenant_id == tenant_id,
+        statement = (
+            select(DiscoveryJobRecord)
+            .where(
+                DiscoveryJobRecord.id == job_id,
+                DiscoveryJobRecord.tenant_id == tenant_id,
+            )
+            .execution_options(populate_existing=True)
         )
         return self.session.scalars(statement).first()
+
+    def list_queued_roots(self, *, limit: int) -> tuple[tuple[str, UUID], ...]:
+        """Return durable root jobs eligible for an atomic worker claim."""
+
+        statement = (
+            select(DiscoveryJobRecord.tenant_id, DiscoveryJobRecord.id)
+            .where(
+                DiscoveryJobRecord.state == DiscoveryJobStatus.QUEUED.value,
+                DiscoveryJobRecord.parent_job_id.is_(None),
+                DiscoveryJobRecord.execution_owner.is_(None),
+                DiscoveryJobRecord.lease_expires_at.is_(None),
+                DiscoveryJobRecord.last_heartbeat_at.is_(None),
+            )
+            .order_by(DiscoveryJobRecord.requested_at.asc())
+            .limit(limit)
+        )
+        return tuple((tenant_id, job_id) for tenant_id, job_id in self.session.execute(statement))
 
     def list(self, *, tenant_id: str) -> tuple[DiscoveryJobRecord, ...]:
         statement = (
@@ -331,7 +352,14 @@ class DiscoveryJobRepository:
         )
         return tuple(self.session.scalars(statement).all()), int(total or 0)
 
-    def claim(self, *, tenant_id: str, job_id: UUID) -> DiscoveryJobRecord:
+    def claim(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        execution_owner: UUID | None = None,
+        lease_seconds: float | None = None,
+    ) -> DiscoveryJobRecord:
         """Atomically transition one queued job to running."""
 
         job = self.get(tenant_id=tenant_id, job_id=job_id)
@@ -339,6 +367,11 @@ class DiscoveryJobRepository:
             raise DiscoveryResourceNotFoundError("Discovery job was not found.")
         self._lock_target(tenant_id, job.target_id)
         now = _utc_now()
+        lease_expires_at = (
+            now + timedelta(seconds=lease_seconds)
+            if execution_owner is not None and lease_seconds is not None
+            else None
+        )
         result = cast(
             CursorResult[Any],
             self.session.execute(
@@ -347,12 +380,18 @@ class DiscoveryJobRepository:
                     DiscoveryJobRecord.id == job_id,
                     DiscoveryJobRecord.tenant_id == tenant_id,
                     DiscoveryJobRecord.state == DiscoveryJobStatus.QUEUED.value,
+                    DiscoveryJobRecord.execution_owner.is_(None),
+                    DiscoveryJobRecord.lease_expires_at.is_(None),
+                    DiscoveryJobRecord.last_heartbeat_at.is_(None),
                 )
                 .values(
                     state=DiscoveryJobStatus.RUNNING.value,
                     started_at=now,
                     updated_at=now,
                     attempts=DiscoveryJobRecord.attempts + 1,
+                    execution_owner=execution_owner,
+                    lease_expires_at=lease_expires_at,
+                    last_heartbeat_at=(now if execution_owner is not None else None),
                 )
             ),
         )
@@ -364,6 +403,49 @@ class DiscoveryJobRepository:
         self.session.flush()
         return self.get(tenant_id=tenant_id, job_id=job_id)  # type: ignore[return-value]
 
+    def renew_lease(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        execution_owner: UUID,
+        lease_seconds: float,
+    ) -> bool:
+        """Renew a worker-owned root job and its active fan-out children."""
+
+        now = _utc_now()
+        result = self.session.execute(
+            update(DiscoveryJobRecord)
+            .where(
+                DiscoveryJobRecord.tenant_id == tenant_id,
+                DiscoveryJobRecord.execution_owner == execution_owner,
+                DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+                (DiscoveryJobRecord.id == job_id)
+                | (DiscoveryJobRecord.parent_job_id == job_id),
+            )
+            .values(
+                lease_expires_at=now + timedelta(seconds=lease_seconds),
+                last_heartbeat_at=now,
+                updated_at=now,
+            )
+        )
+        if result.rowcount < 1:
+            self.session.rollback()
+            return False
+        self.session.flush()
+        return True
+
+    def owned_running_job(
+        self, *, tenant_id: str, job_id: UUID, execution_owner: UUID
+    ) -> DiscoveryJobRecord | None:
+        statement = select(DiscoveryJobRecord).where(
+            DiscoveryJobRecord.id == job_id,
+            DiscoveryJobRecord.tenant_id == tenant_id,
+            DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+            DiscoveryJobRecord.execution_owner == execution_owner,
+        )
+        return self.session.scalars(statement).first()
+
     def transition(
         self,
         *,
@@ -373,6 +455,7 @@ class DiscoveryJobRepository:
         failure_code: str | None = None,
         failure_message: str | None = None,
         require_no_cancellation: bool = False,
+        expected_execution_owner: UUID | None = None,
     ) -> DiscoveryJobRecord:
         """Apply one validated durable state transition."""
 
@@ -400,6 +483,16 @@ class DiscoveryJobRepository:
         if require_no_cancellation:
             statement = statement.where(
                 DiscoveryJobRecord.cancellation_requested_at.is_(None)
+            )
+        if expected_execution_owner is not None:
+            statement = statement.where(
+                DiscoveryJobRecord.execution_owner == expected_execution_owner
+            )
+        if target_state.is_terminal:
+            values.update(
+                execution_owner=None,
+                lease_expires_at=None,
+                last_heartbeat_at=None,
             )
         result = self.session.execute(statement.values(**values))
         if result.rowcount != 1:
@@ -467,17 +560,30 @@ class DiscoveryJobRepository:
         return self.get(tenant_id=tenant_id, job_id=job_id), True  # type: ignore[return-value]
 
     def cancellation_requested(self, *, tenant_id: str, job_id: UUID) -> bool:
-        job = self.get(tenant_id=tenant_id, job_id=job_id)
-        return bool(
-            job is not None
-            and (
-                job.cancellation_requested_at is not None
-                or job.state == DiscoveryJobStatus.CANCELLED.value
+        """Read cancellation state directly, bypassing the ORM identity map."""
+
+        value = self.session.scalar(
+            select(DiscoveryJobRecord.cancellation_requested_at).where(
+                DiscoveryJobRecord.id == job_id,
+                DiscoveryJobRecord.tenant_id == tenant_id,
             )
         )
+        if value is not None:
+            return True
+        state = self.session.scalar(
+            select(DiscoveryJobRecord.state).where(
+                DiscoveryJobRecord.id == job_id,
+                DiscoveryJobRecord.tenant_id == tenant_id,
+            )
+        )
+        return state == DiscoveryJobStatus.CANCELLED.value
 
     def finalise_cancellation(
-        self, *, tenant_id: str, job_id: UUID
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        expected_execution_owner: UUID | None = None,
     ) -> DiscoveryJobRecord:
         job = self.get(tenant_id=tenant_id, job_id=job_id)
         if job is None:
@@ -492,6 +598,62 @@ class DiscoveryJobRepository:
             target_state=DiscoveryJobStatus.CANCELLED,
             failure_code=DiscoveryFailureCode.CANCELLED.value,
             failure_message=job.cancellation_reason or "Cancelled by operator.",
+            expected_execution_owner=expected_execution_owner,
+        )
+
+    def recover_expired_owned_jobs(
+        self,
+        *,
+        stale_before: datetime,
+    ) -> tuple[tuple[str, UUID], ...]:
+        """Return only leased running jobs that are safe to reconcile."""
+
+        statement = select(DiscoveryJobRecord.tenant_id, DiscoveryJobRecord.id).where(
+            DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+            DiscoveryJobRecord.execution_owner.is_not(None),
+            DiscoveryJobRecord.lease_expires_at.is_not(None),
+            DiscoveryJobRecord.lease_expires_at < stale_before,
+        )
+        return tuple((tenant_id, job_id) for tenant_id, job_id in self.session.execute(statement))
+
+    def recover_expired_owned_job(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        stale_before: datetime,
+    ) -> DiscoveryJobRecord | None:
+        """Terminally reconcile one expired lease without re-running network work."""
+
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        if (
+            job is None
+            or job.state != DiscoveryJobStatus.RUNNING.value
+            or job.execution_owner is None
+            or job.lease_expires_at is None
+            or job.lease_expires_at >= stale_before
+        ):
+            return None
+        target_state = (
+            DiscoveryJobStatus.CANCELLED
+            if self.cancellation_requested(tenant_id=tenant_id, job_id=job_id)
+            else DiscoveryJobStatus.FAILED
+        )
+        return self.transition(
+            tenant_id=tenant_id,
+            job_id=job_id,
+            target_state=target_state,
+            failure_code=(
+                DiscoveryFailureCode.CANCELLED.value
+                if target_state == DiscoveryJobStatus.CANCELLED
+                else DiscoveryFailureCode.DISCOVERY_FAILED.value
+            ),
+            failure_message=(
+                job.cancellation_reason or "Cancelled by operator."
+                if target_state == DiscoveryJobStatus.CANCELLED
+                else "Discovery worker lease expired; execution was not resumed."
+            ),
+            expected_execution_owner=job.execution_owner,
         )
 
     def record_selection(
@@ -533,6 +695,7 @@ class DiscoveryJobRepository:
         job_id: UUID,
         failure_code: str,
         failure_message: str,
+        expected_execution_owner: UUID | None = None,
     ) -> DiscoveryJobRecord:
         """Rollback pending work, then persist failure in a clean transaction."""
 
@@ -544,6 +707,7 @@ class DiscoveryJobRepository:
             failure_code=failure_code,
             failure_message=failure_message,
             require_no_cancellation=True,
+            expected_execution_owner=expected_execution_owner,
         )
 
 

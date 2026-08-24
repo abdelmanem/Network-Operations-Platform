@@ -240,6 +240,15 @@ class DiscoveryJobRecord(BaseModel):
         Uuid(as_uuid=True), nullable=True
     )
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    execution_owner: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     target: Mapped[DiscoveryTargetRecord] = relationship(back_populates="jobs")
     discovery_run: Mapped[DiscoveryRunRecord] = relationship(
