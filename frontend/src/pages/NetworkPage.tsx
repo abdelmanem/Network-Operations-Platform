@@ -10,6 +10,7 @@ import {
 } from '../api/inventory'
 import { getSnapshot, listDeviceInterfaces, listDeviceNeighbors, listDeviceVlans } from '../api/snapshots'
 import type {
+  DeviceSnapshotItem,
   DeviceComparisonResponse,
   InterfaceListResponse,
   InventoryListResponse,
@@ -21,10 +22,37 @@ import './NetworkPage.css'
 
 type PageSection = 'overview' | 'expected' | 'live' | 'variance' | 'comparison' | 'detail'
 type DetailView = 'interfaces' | 'vlans' | 'neighbors' | null
+type InventorySortKey = 'name' | 'model' | 'serial_number' | 'platform' | 'management_ip'
+type SortDirection = 'asc' | 'desc'
 
 interface LoadState {
   state: 'loading' | 'ready' | 'empty' | 'error'
   error?: string
+}
+
+const inventoryValue = (value: string | null | undefined) => value?.trim() || '—'
+
+function inventoryMatchesSearch(device: DeviceSnapshotItem, query: string) {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return true
+
+  return Object.values(device).some((value) =>
+    String(value ?? '').toLocaleLowerCase().includes(normalizedQuery),
+  )
+}
+
+function sortInventory(
+  items: DeviceSnapshotItem[],
+  sortKey: InventorySortKey,
+  direction: SortDirection,
+) {
+  const factor = direction === 'asc' ? 1 : -1
+  return [...items].sort((left, right) =>
+    inventoryValue(left[sortKey]).localeCompare(inventoryValue(right[sortKey]), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    }) * factor,
+  )
 }
 
 export function NetworkPage() {
@@ -38,6 +66,14 @@ export function NetworkPage() {
   const [liveInventory, setLiveInventory] = useState<InventoryListResponse | null>(null)
   const [netboxPage, setNetboxPage] = useState(1)
   const [livePage, setLivePage] = useState(1)
+  const [netboxSearch, setNetboxSearch] = useState('')
+  const [liveSearch, setLiveSearch] = useState('')
+  const [netboxManufacturer, setNetboxManufacturer] = useState('')
+  const [liveManufacturer, setLiveManufacturer] = useState('')
+  const [netboxPlatform, setNetboxPlatform] = useState('')
+  const [livePlatform, setLivePlatform] = useState('')
+  const [netboxSort, setNetboxSort] = useState<{ key: InventorySortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' })
+  const [liveSort, setLiveSort] = useState<{ key: InventorySortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' })
 
   // Comparison data
   const [comparison, setComparison] = useState<DeviceComparisonResponse | null>(null)
@@ -197,6 +233,65 @@ export function NetworkPage() {
     return `network-diff-badge network-diff-badge-${key}`
   }
 
+  const renderInventoryControls = (
+    inventory: InventoryListResponse,
+    search: string,
+    setSearch: (value: string) => void,
+    manufacturer: string,
+    setManufacturer: (value: string) => void,
+    platform: string,
+    setPlatform: (value: string) => void,
+  ) => {
+    const manufacturers = [...new Set(inventory.items.map((device) => device.manufacturer).filter(Boolean))].sort()
+    const platforms = [...new Set(inventory.items.map((device) => device.platform).filter(Boolean))].sort()
+
+    return (
+      <div className="network-table-controls">
+        <label className="network-search-label">
+          <span className="sr-only">Search all device values</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search all values…"
+            aria-label="Search all device values"
+          />
+        </label>
+        <label>
+          <span>Manufacturer</span>
+          <select value={manufacturer} onChange={(event) => setManufacturer(event.target.value)}>
+            <option value="">All manufacturers</option>
+            {manufacturers.map((value) => <option key={value} value={value!}>{value}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Platform</span>
+          <select value={platform} onChange={(event) => setPlatform(event.target.value)}>
+            <option value="">All platforms</option>
+            {platforms.map((value) => <option key={value} value={value!}>{value}</option>)}
+          </select>
+        </label>
+      </div>
+    )
+  }
+
+  const renderSortableHeader = (
+    label: string,
+    key: InventorySortKey,
+    sort: { key: InventorySortKey; direction: SortDirection },
+    setSort: (value: { key: InventorySortKey; direction: SortDirection }) => void,
+  ) => {
+    const isActive = sort.key === key
+    const nextDirection: SortDirection = isActive && sort.direction === 'asc' ? 'desc' : 'asc'
+    return (
+      <th aria-sort={isActive ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button type="button" className="network-sort-button" onClick={() => setSort({ key, direction: nextDirection })}>
+          {label} <span aria-hidden="true">{isActive ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+        </button>
+      </th>
+    )
+  }
+
   // RENDER: Overview Section
   // =========================================================================
   const renderOverview = () => (
@@ -307,6 +402,15 @@ export function NetworkPage() {
     }
 
     const inventory = netboxInventory!
+    const filteredItems = sortInventory(
+      inventory.items.filter((device) =>
+        inventoryMatchesSearch(device, netboxSearch)
+        && (!netboxManufacturer || device.manufacturer === netboxManufacturer)
+        && (!netboxPlatform || device.platform === netboxPlatform),
+      ),
+      netboxSort.key,
+      netboxSort.direction,
+    )
     return (
       <div className="card">
         <h2>Expected Network State — NetBox</h2>
@@ -315,20 +419,23 @@ export function NetworkPage() {
           {formatTimestamp(inventory.snapshot_captured_at)}
         </p>
 
+        {renderInventoryControls(inventory, netboxSearch, setNetboxSearch, netboxManufacturer, setNetboxManufacturer, netboxPlatform, setNetboxPlatform)}
+        <p className="network-result-count">Showing {filteredItems.length} of {inventory.items.length} devices on this page</p>
+
         <div className="network-table-wrap">
           <table className="network-table">
             <thead>
               <tr>
-                <th>Device</th>
-                <th>Model</th>
-                <th>Serial</th>
-                <th>Platform</th>
-                <th>Management IP</th>
+                {renderSortableHeader('Device', 'name', netboxSort, setNetboxSort)}
+                {renderSortableHeader('Model', 'model', netboxSort, setNetboxSort)}
+                {renderSortableHeader('Serial', 'serial_number', netboxSort, setNetboxSort)}
+                {renderSortableHeader('Platform', 'platform', netboxSort, setNetboxSort)}
+                {renderSortableHeader('Management IP', 'management_ip', netboxSort, setNetboxSort)}
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {inventory.items.map((device) => (
+              {filteredItems.map((device) => (
                 <tr key={device.device_id}>
                   <td>{device.name || device.device_id}</td>
                   <td>{device.model || '—'}</td>
@@ -346,6 +453,9 @@ export function NetworkPage() {
                   </td>
                 </tr>
               ))}
+              {filteredItems.length === 0 && (
+                <tr><td colSpan={6} className="network-no-results">No devices match the current search and filters.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -416,6 +526,15 @@ export function NetworkPage() {
     }
 
     const inventory = liveInventory!
+    const filteredItems = sortInventory(
+      inventory.items.filter((device) =>
+        inventoryMatchesSearch(device, liveSearch)
+        && (!liveManufacturer || device.manufacturer === liveManufacturer)
+        && (!livePlatform || device.platform === livePlatform),
+      ),
+      liveSort.key,
+      liveSort.direction,
+    )
     return (
       <div className="card">
         <h2>Observed Network State — Live Discovery</h2>
@@ -424,20 +543,23 @@ export function NetworkPage() {
           {formatTimestamp(inventory.snapshot_captured_at)}
         </p>
 
+        {renderInventoryControls(inventory, liveSearch, setLiveSearch, liveManufacturer, setLiveManufacturer, livePlatform, setLivePlatform)}
+        <p className="network-result-count">Showing {filteredItems.length} of {inventory.items.length} devices on this page</p>
+
         <div className="network-table-wrap">
           <table className="network-table">
             <thead>
               <tr>
-                <th>Device</th>
-                <th>Model</th>
-                <th>Serial</th>
-                <th>Platform</th>
-                <th>Management IP</th>
+                {renderSortableHeader('Device', 'name', liveSort, setLiveSort)}
+                {renderSortableHeader('Model', 'model', liveSort, setLiveSort)}
+                {renderSortableHeader('Serial', 'serial_number', liveSort, setLiveSort)}
+                {renderSortableHeader('Platform', 'platform', liveSort, setLiveSort)}
+                {renderSortableHeader('Management IP', 'management_ip', liveSort, setLiveSort)}
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {inventory.items.map((device) => (
+              {filteredItems.map((device) => (
                 <tr key={device.device_id}>
                   <td>{device.name || device.device_id}</td>
                   <td>{device.model || '—'}</td>
@@ -455,6 +577,9 @@ export function NetworkPage() {
                   </td>
                 </tr>
               ))}
+              {filteredItems.length === 0 && (
+                <tr><td colSpan={6} className="network-no-results">No devices match the current search and filters.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
