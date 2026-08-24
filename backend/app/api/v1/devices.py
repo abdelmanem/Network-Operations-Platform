@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from backend.app.api.v1.dependencies import get_db_session
-from backend.app.persistence.models import SnapshotSource
+from backend.app.persistence.models import SnapshotDeviceRecord, SnapshotSource
 from backend.app.persistence.repositories import FindingRepository, SnapshotRepository
 from backend.app.schemas.comparison import (
     ComparisonState,
@@ -18,6 +18,39 @@ from backend.app.schemas.comparison import (
 from backend.app.schemas.devices import DeviceHistoryItem, DeviceHistoryResponse
 
 router = APIRouter(prefix="/devices", tags=["devices"])
+
+
+def _normalize_device_identity(value: str | None) -> str:
+    return "" if value is None else value.strip().casefold()
+
+
+def _match_device_by_identity(
+    devices: list[SnapshotDeviceRecord] | tuple[SnapshotDeviceRecord, ...],
+    *,
+    device_id: str | None = None,
+    name: str | None = None,
+    serial_number: str | None = None,
+) -> SnapshotDeviceRecord | None:
+    if not devices:
+        return None
+
+    for field_name, raw_value in (
+        ("device_id", device_id),
+        ("name", name),
+        ("serial_number", serial_number),
+    ):
+        if raw_value is None:
+            continue
+        normalized_value = _normalize_device_identity(raw_value)
+        for device in devices:
+            candidate = getattr(device, field_name, None)
+            if field_name == "device_id" and candidate == raw_value:
+                return device
+            if field_name in {"name", "serial_number"} and (
+                _normalize_device_identity(candidate) == normalized_value
+            ):
+                return device
+    return None
 
 
 @router.get(
@@ -116,22 +149,36 @@ def compare_device(
     expected_snapshot = snapshot_repo.get(comparison.expected_snapshot_id)
     observed_snapshot = snapshot_repo.get(comparison.observed_snapshot_id)
 
-    # Get the specific device records from each snapshot
+    # Match devices using the same logical identity semantics as the accepted
+    # comparison pipeline: exact device_id first, then normalized name, then serial.
     expected_device = None
     if expected_snapshot:
-        devices = snapshot_repo.get_snapshot_devices(
-            expected_snapshot.id, device_id=device_id
+        expected_devices = snapshot_repo.get_snapshot_devices(expected_snapshot.id)
+        expected_device = _match_device_by_identity(
+            expected_devices,
+            device_id=device_id,
+            name=device_id,
         )
-        if devices:
-            expected_device = devices[0]
 
     observed_device = None
     if observed_snapshot:
-        devices = snapshot_repo.get_snapshot_devices(
-            observed_snapshot.id, device_id=device_id
+        observed_devices = snapshot_repo.get_snapshot_devices(observed_snapshot.id)
+        observed_device = _match_device_by_identity(
+            observed_devices,
+            device_id=device_id,
+            name=(expected_device.name if expected_device is not None else device_id),
+            serial_number=(
+                expected_device.serial_number
+                if expected_device is not None
+                else None
+            ),
         )
-        if devices:
-            observed_device = devices[0]
+        if observed_device is None and expected_device is not None:
+            observed_device = _match_device_by_identity(
+                observed_devices,
+                name=expected_device.name,
+                serial_number=expected_device.serial_number,
+            )
 
     if expected_device is None and observed_device is None:
         raise HTTPException(
@@ -139,8 +186,29 @@ def compare_device(
             detail=f"Device {device_id} not found in any snapshot.",
         )
 
-    # Get all findings for this device to show variances
-    findings = finding_repo.list_by_device(device_id)
+    # Findings are persisted against the comparison's logical subject name.
+    target_names = {
+        _normalize_device_identity(device_id),
+    }
+    if expected_device is not None:
+        target_names.add(_normalize_device_identity(expected_device.name))
+    findings = tuple(
+        finding
+        for finding in comparison.findings
+        if any(
+            (
+                subject_id := _normalize_device_identity(
+                    str(evidence.details.get("subject_id"))
+                )
+            )
+            and any(
+                subject_id == target_name or subject_id.startswith(target_name + ":")
+                for target_name in target_names
+            )
+            for evidence in finding.evidence
+            if isinstance(evidence.details, dict)
+        )
+    )
 
     # Build variance summary from findings
     variances = []
@@ -148,12 +216,29 @@ def compare_device(
         if isinstance(finding.expected_state, dict) and isinstance(
             finding.observed_state, dict
         ):
+            evidence_details = next(
+                (
+                    evidence.details
+                    for evidence in finding.evidence
+                    if isinstance(evidence.details, dict)
+                ),
+                {},
+            )
             variance = VarianceSummary(
-                field_name=finding.expected_state.get("field_name", "unknown"),
+                field_name=str(
+                    evidence_details.get(
+                        "field_name", finding.expected_state.get("field_name")
+                    )
+                    or "unknown"
+                ),
                 expected_value=finding.expected_state.get("value"),
                 observed_value=finding.observed_state.get("value"),
-                difference_type=finding.expected_state.get(
-                    "difference_type", "UNKNOWN"
+                difference_type=str(
+                    finding.expected_state.get(
+                        "difference_type",
+                        finding.observed_state.get("difference_type"),
+                    )
+                    or "UNKNOWN"
                 ),
             )
             variances.append(variance)

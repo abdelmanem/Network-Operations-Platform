@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 from backend.app.api.v1.comparison import compare_existing_snapshots
+from backend.app.api.v1.devices import _match_device_by_identity, compare_device
 from backend.app.comparison.snapshot_service import (
     SnapshotComparisonError,
     SnapshotComparisonService,
@@ -12,15 +13,10 @@ from backend.app.comparison.snapshot_service import (
 from backend.app.inventory.dto import InventorySnapshot as NetBoxInventorySnapshot
 from backend.app.inventory.entities import Device, DeviceType, Manufacturer, Platform
 from backend.app.models.base import BaseModel
-from backend.app.persistence.models import (
-    DiscoveryRunRecord,
-    SnapshotRecord,
-    SnapshotSource,
-)
-from backend.app.persistence.repositories import FindingRepository
+from backend.app.persistence.models import DiscoveryRunRecord
+from backend.app.persistence.repositories import FindingRepository, SnapshotRepository
 from backend.app.schemas.comparison import SnapshotComparisonRequest
 from backend.app.snapshot.entities import DeviceSnapshot, InventorySnapshot
-from backend.app.snapshot.mapper import SnapshotMapper
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -68,34 +64,27 @@ def _seed_snapshots(session: Session) -> None:
         ),
         source="coreSW",
     )
-    session.add_all(
-        [
-            DiscoveryRunRecord(
-                id=run_id,
-                tenant_id="tenant-a",
-                target_identifier="coreSW",
-                target_address="192.168.137.225",
-                metadata_json={},
-            ),
-            SnapshotRecord(
-                id=NETBOX_SNAPSHOT_ID,
-                source=SnapshotSource.NETBOX.value,
-                source_label="netbox",
-                captured_at=datetime.now(UTC),
-                schema_version="netbox-canonical-v1",
-                payload=expected.model_dump(mode="json"),
-            ),
-            SnapshotRecord(
-                id=LIVE_SNAPSHOT_ID,
-                source=SnapshotSource.LIVE.value,
-                source_label="coreSW",
-                captured_at=datetime.now(UTC),
-                schema_version="snapshot-v1",
-                discovery_run_id=run_id,
-                payload=SnapshotMapper().to_model(observed).model_dump(mode="json"),
-            ),
-        ]
+
+    session.add(
+        DiscoveryRunRecord(
+            id=run_id,
+            tenant_id="tenant-a",
+            target_identifier="coreSW",
+            target_address="192.168.137.225",
+            metadata_json={},
+        )
     )
+    repository = SnapshotRepository(session)
+    expected_id = repository.add_netbox_snapshot(expected).id
+    live_id = repository.add_live_snapshot(
+        observed,
+        discovery_run_id=run_id,
+    ).id
+
+    global NETBOX_SNAPSHOT_ID, LIVE_SNAPSHOT_ID
+    NETBOX_SNAPSHOT_ID = expected_id
+    LIVE_SNAPSHOT_ID = live_id
+
     session.commit()
 
 
@@ -161,3 +150,50 @@ def test_comparison_endpoint_returns_persisted_result_id_and_status() -> None:
         assert response.id == FindingRepository(session).get_latest_comparison().id
     finally:
         session.close()
+
+
+def test_device_compare_matches_logical_device_when_device_id_differs() -> None:
+    session = _session()
+    try:
+        _seed_snapshots(session)
+
+        result_id = SnapshotComparisonService(session).compare(
+            expected_snapshot_id=NETBOX_SNAPSHOT_ID,
+            observed_snapshot_id=LIVE_SNAPSHOT_ID,
+            tenant_id="tenant-a",
+        )
+
+        response = compare_device(
+            db_session=session,
+            device_id="Radisson_Blu_BB",
+            run_id=result_id,
+        )
+
+        assert response.expected_state is not None
+        assert response.observed_state is not None
+        assert response.expected_state.name == "Radisson_Blu_BB"
+        assert response.observed_state.name == "Radisson_Blu_BB"
+        assert response.expected_state.model == "WS-C4506-E"
+        assert response.observed_state.model == "WS-C4506-E"
+        assert response.expected_state.serial_number == "FOX1208GJ74"
+        assert response.observed_state.serial_number == "FOX1208GJ74"
+        assert response.observed_state.device_id == "coreSW"
+        assert response.variances
+    finally:
+        session.close()
+
+
+def test_device_identity_match_falls_back_to_serial() -> None:
+    device = SimpleNamespace(
+        device_id="coreSW",
+        name="unavailable-name",
+        serial_number="FOX1208GJ74",
+    )
+
+    matched = _match_device_by_identity(
+        (device,),
+        name="Radisson_Blu_BB",
+        serial_number="FOX1208GJ74",
+    )
+
+    assert matched is device
