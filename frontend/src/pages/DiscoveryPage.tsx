@@ -363,6 +363,9 @@ function OverviewPanel({
   )
 }
 
+// Local, self-contained search box for the target list. State lives here
+// (not lifted to DiscoveryPage) since it's a pure display/filter concern —
+// it never changes which target is selected or any data fetched.
 function TargetSidebar({
   targets,
   selectedTargetId,
@@ -376,11 +379,52 @@ function TargetSidebar({
   onSelect: (id: string) => void
   onAddTarget: () => void
 }) {
+  const [query, setQuery] = useState('')
+
+  const filteredTargets = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return targets
+
+    return targets.filter((target) => {
+      const haystack = [
+        target.identifier,
+        targetAddress(target),
+        formatPlatform(target.platform_hint),
+        target.preferred_transport
+          ? formatTransport(target.preferred_transport)
+          : '',
+      ]
+        .join(' ')
+        .toLowerCase()
+
+      return haystack.includes(q)
+    })
+  }, [targets, query])
+
+  const showSearch = !loading && targets.length > 0
+
   return (
     <aside className="discovery-panel discovery-targets-sidebar">
       <div className="discovery-panel-header">
         <h2>Targets</h2>
       </div>
+
+      {showSearch ? (
+        <div className="discovery-target-search">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by name, address, or platform…"
+            aria-label="Search targets"
+          />
+          {query.trim() ? (
+            <span className="discovery-target-search-count">
+              {filteredTargets.length} of {targets.length} shown
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="discovery-loading">
@@ -404,9 +448,17 @@ function TargetSidebar({
             Add target
           </button>
         </div>
-      ) : (
+      ) : null}
+
+      {!loading && targets.length > 0 && filteredTargets.length === 0 ? (
+        <div className="discovery-target-no-matches">
+          No targets match “{query.trim()}”.
+        </div>
+      ) : null}
+
+      {!loading && filteredTargets.length > 0 ? (
         <div className="discovery-targets-list">
-          {targets.map((target) => {
+          {filteredTargets.map((target) => {
             const selected = target.target_id === selectedTargetId
 
             return (
@@ -441,7 +493,7 @@ function TargetSidebar({
             )
           })}
         </div>
-      )}
+      ) : null}
 
       {targets.length > 0 ? (
         <div className="discovery-targets-footer">
