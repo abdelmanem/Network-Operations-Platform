@@ -10,6 +10,7 @@ from backend.app.discovery.fanout import DiscoveryFanoutService
 from backend.app.models.base import BaseModel
 from backend.app.persistence.models import (
     DiscoveryDeviceResultRecord,
+    DiscoveryEvidenceRecord,
     DiscoveryJobRecord,
     DiscoveryRunRecord,
     DiscoveryTargetRecord,
@@ -53,7 +54,7 @@ async def test_cidr_fanout_creates_independent_bounded_results() -> None:
     target = DiscoveryTargetRecord(
         id=uuid4(),
         tenant_id="tenant-a",
-        identifier="scope-01",
+        identifier="Cisco sw 40",
         address="192.0.2.0/30",
         scope_type=DiscoveryScopeType.CIDR_NETWORK.value,
         scope_cidr="192.0.2.0/30",
@@ -65,7 +66,7 @@ async def test_cidr_fanout_creates_independent_bounded_results() -> None:
     run = DiscoveryRunRecord(
         id=uuid4(),
         tenant_id="tenant-a",
-        target_identifier="scope-01",
+        target_identifier="Cisco sw 40",
         status="started",
         metadata_json={},
     )
@@ -93,6 +94,7 @@ async def test_cidr_fanout_creates_independent_bounded_results() -> None:
     assert {result.address for result in results} == {"192.0.2.1", "192.0.2.2"}
     assert all(result.state == "succeeded" for result in results)
     assert len(session.scalars(select(DiscoveryDeviceResultRecord)).all()) == 2
+    assert len(session.scalars(select(DiscoveryEvidenceRecord)).all()) == 2
     attempts = session.scalars(select(DiscoveryTransportAttemptRecord)).all()
     assert len(attempts) == 2
     assert all(attempt.result == "success" for attempt in attempts)

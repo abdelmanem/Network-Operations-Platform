@@ -86,6 +86,26 @@ def create_target(
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
 ) -> DiscoveryTargetResponse:
     _validate_tenant(payload.tenant_id, tenant_id)
+    credential_reference = payload.credential_reference or ""
+    if payload.credential_profile_id is not None:
+        try:
+            profile_uuid = UUID(payload.credential_profile_id)
+        except ValueError:
+            profile_uuid = None
+        profile = (
+            None
+            if profile_uuid is None
+            else CredentialProfileRepository(db_session).get(
+                tenant_id=tenant_id,
+                profile_id=profile_uuid,
+            )
+        )
+        if profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Credential profile was not found.",
+            )
+        credential_reference = profile.provider_reference
     try:
         record = DiscoveryTargetRepository(db_session).create(
             tenant_id=tenant_id,
@@ -96,9 +116,7 @@ def create_target(
             scope_cidr=payload.scope_cidr,
             hostname=payload.hostname,
             vendor=payload.vendor,
-            credential_reference=(
-                payload.credential_profile_id or payload.credential_reference or ""
-            ),
+            credential_reference=credential_reference,
             credential_profile_id=payload.credential_profile_id,
             credential_references=dict(payload.credential_references),
             allowed_fallback_transports=payload.allowed_fallback_transports,

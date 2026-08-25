@@ -21,6 +21,7 @@ from backend.app.persistence.models import (
     SnapshotDeviceRecord,
     SnapshotRecord,
 )
+from backend.app.transports.secret_errors import SecretNotFoundError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -51,6 +52,11 @@ class RawCollector(BaseCollector):
 class FailingCollector(RawCollector):
     async def collect(self, context: CollectorContext, *, discovered_targets):
         raise TimeoutError("device discovery timed out")
+
+
+class MissingSecretCollector(RawCollector):
+    async def collect(self, context: CollectorContext, *, discovered_targets):
+        raise SecretNotFoundError("Requested secret was not found.")
 
 
 class CancellingCollector(RawCollector):
@@ -205,6 +211,23 @@ async def test_failed_discovery_persists_stable_timeout_code() -> None:
     assert outcome.job.state == DiscoveryJobStatus.FAILED.value
     assert outcome.job.failure_code == "DISCOVERY_TIMEOUT"
     assert outcome.job.failure_message == "device discovery timed out"
+
+
+@pytest.mark.anyio
+async def test_secret_provider_failure_persists_accurate_non_secret_result() -> None:
+    session = _session()
+    job = _job(session, collector_name="missing-secret")
+    registry = CollectorRegistry()
+    registry.register(MissingSecretCollector(name="missing-secret", capabilities=frozenset()))
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    assert outcome.job.failure_code == "CREDENTIAL_RESOLUTION_FAILED"
+    assert outcome.job.failure_message == "Requested secret was not found."
+    assert "runtime-secret" not in outcome.job.failure_message
 
 
 @pytest.mark.anyio

@@ -18,9 +18,10 @@ from backend.app.auth.infrastructure.repositories import (
 from backend.app.cli import provision_admin_user
 from backend.app.core.application import create_application
 from backend.app.models.base import BaseModel
+from backend.app.persistence.models import DiscoveryTargetRecord
 from fastapi import status
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -381,6 +382,13 @@ def test_discovery_target_uses_profile_reference_without_storing_raw_secret() ->
         assert target_response.status_code == status.HTTP_201_CREATED
         target_body = target_response.json()
         assert target_body["credential_profile_id"] == profile_id
+        stored_target = session.scalar(
+            select(DiscoveryTargetRecord).where(
+                DiscoveryTargetRecord.identifier == "core-sw-01"
+            )
+        )
+        assert stored_target is not None
+        assert stored_target.credential_reference == "env:TEST_CISCO_SSH_PASSWORD"
         assert "TEST_CISCO_SSH_PASSWORD" not in str(target_body)
         assert "super-secret-value" not in str(target_body)
     finally:
