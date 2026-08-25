@@ -88,6 +88,8 @@ def provision_admin_user(
         )
     _ensure_admin_permissions(session, role_name=role_name)
     existing_role = role_repo.get_by_name(role_name)
+    if existing_role is None:
+        raise RuntimeError("Administrator role could not be created.")
 
     user_repo = SQLAlchemyUserRepository(session)
     auth_service = AuthenticationService(

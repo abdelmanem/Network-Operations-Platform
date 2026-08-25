@@ -15,7 +15,7 @@ from fastapi import (
     Query,
     Request,
     Response,
-    status,
+    status as http_status,
 )
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -43,6 +43,7 @@ from backend.app.persistence.discovery_repositories import (
     InvalidDiscoveryTransitionError,
 )
 from backend.app.persistence.models import (
+    CredentialProfileRecord,
     DiscoveryDeviceResultRecord,
     DiscoveryEvidenceRecord,
     DiscoveryJobRecord,
@@ -76,7 +77,7 @@ router: APIRouter = APIRouter(prefix="/discovery", tags=["discovery"])
 @router.post(
     "/targets",
     response_model=DiscoveryTargetResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=http_status.HTTP_201_CREATED,
     summary="Create a discovery target",
 )
 def create_target(
@@ -102,7 +103,7 @@ def create_target(
         )
         if profile is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Credential profile was not found.",
             )
         credential_reference = profile.provider_reference
@@ -165,7 +166,7 @@ def update_target(
     existing_target = target_repo.get(tenant_id=tenant_id, target_id=target_id)
     if existing_target is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Discovery target was not found.",
         )
 
@@ -191,7 +192,7 @@ def update_target(
             )
         if profile is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Credential profile was not found.",
             )
 
@@ -214,7 +215,7 @@ def update_target(
             and effective_transport.lower() not in profile_transports
         ):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Credential profile does not support target transport '{effective_transport}'.",
             )
 
@@ -231,13 +232,13 @@ def update_target(
     except DiscoveryResourceNotFoundError as exc:
         db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
     except DiscoveryPersistenceError as exc:
         db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=http_status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
 
@@ -263,7 +264,7 @@ def list_credential_profiles(
 @router.post(
     "/credential-profiles",
     response_model=CredentialProfileResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=http_status.HTTP_201_CREATED,
     summary="Create a credential profile",
 )
 def create_credential_profile(
@@ -286,7 +287,7 @@ def create_credential_profile(
 @router.post(
     "/jobs",
     response_model=DiscoveryJobResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=http_status.HTTP_202_ACCEPTED,
     summary="Start a discovery job",
 )
 def create_job(
@@ -384,7 +385,7 @@ def cancel_job(
         },
     )
     if job.state == DiscoveryJobStatus.RUNNING.value:
-        response.status_code = status.HTTP_202_ACCEPTED
+        response.status_code = http_status.HTTP_202_ACCEPTED
     return _job_response(job)
 
 
@@ -472,9 +473,7 @@ def list_jobs(
         )
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
-            if hasattr(status, "HTTP_422_UNPROCESSABLE_ENTITY")
-            else 422,
+            status_code=422,
             detail=str(exc),
         ) from exc
 
@@ -784,7 +783,7 @@ def _job_response(record: DiscoveryJobRecord) -> DiscoveryJobResponse:
 
 
 def _credential_profile_response(
-    record: object,
+    record: CredentialProfileRecord,
 ) -> CredentialProfileResponse:
     return CredentialProfileResponse.model_validate(
         {

@@ -13,6 +13,7 @@ from sqlalchemy import String, cast as sql_cast, func, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from backend.app.discovery.contracts import (
     DiscoveryEvidence,
@@ -420,6 +421,7 @@ class DiscoveryJobRepository:
 
         bind = self.session.get_bind()
         is_sqlite = bind.dialect.name == "sqlite"
+        order_clause: ColumnElement[Any]
 
         if normalized_sort in {"newest", "requested_at", "created_at"}:
             direction = normalized_order or "desc"
@@ -547,9 +549,10 @@ class DiscoveryJobRepository:
                     lease_expires_at=now + timedelta(seconds=lease_seconds),
                     last_heartbeat_at=now,
                 )
+                .returning(DiscoveryJobRecord.id)
             ),
         )
-        if result.rowcount != 1:
+        if result.scalar_one_or_none() is None:
             self.session.rollback()
             raise InvalidDiscoveryTransitionError(
                 "Only queued discovery jobs can be claimed."
@@ -582,8 +585,9 @@ class DiscoveryJobRepository:
                 last_heartbeat_at=now,
                 updated_at=now,
             )
+            .returning(DiscoveryJobRecord.id)
         )
-        if result.rowcount < 1:
+        if result.first() is None:
             self.session.rollback()
             return False
         self.session.flush()
@@ -612,7 +616,6 @@ class DiscoveryJobRepository:
         expected_execution_owner: UUID | None = None,
     ) -> DiscoveryJobRecord:
         """Apply one validated durable state transition."""
-
         job = self.get(tenant_id=tenant_id, job_id=job_id)
         if job is None:
             raise DiscoveryResourceNotFoundError("Discovery job was not found.")
@@ -648,8 +651,10 @@ class DiscoveryJobRepository:
                 lease_expires_at=None,
                 last_heartbeat_at=None,
             )
-        result = self.session.execute(statement.values(**values))
-        if result.rowcount != 1:
+        result = self.session.execute(
+            statement.values(**values).returning(DiscoveryJobRecord.id)
+        )
+        if result.scalar_one_or_none() is None:
             self.session.rollback()
             raise InvalidDiscoveryTransitionError(
                 "Discovery job changed state before transition could be applied."
@@ -701,8 +706,10 @@ class DiscoveryJobRepository:
             DiscoveryJobRecord.tenant_id == tenant_id,
             DiscoveryJobRecord.state == job.state,
         )
-        result = self.session.execute(statement.values(**values))
-        if result.rowcount != 1:
+        result = self.session.execute(
+            statement.values(**values).returning(DiscoveryJobRecord.id)
+        )
+        if result.scalar_one_or_none() is None:
             self.session.rollback()
             current = self.get(tenant_id=tenant_id, job_id=job_id)
             if (
@@ -794,12 +801,13 @@ class DiscoveryJobRepository:
             )
 
         now = _utc_now()
+        lease_expires_at = _as_utc(job.lease_expires_at)
 
         # Verify whether there is a valid active lease held by a worker
         if (
             job.execution_owner is not None
-            and job.lease_expires_at is not None
-            and _as_utc(job.lease_expires_at) > now
+            and lease_expires_at is not None
+            and lease_expires_at > now
         ):
             raise DiscoveryCancellationConflictError(
                 "Cannot resolve cancellation for an actively executing job with a valid worker lease."
@@ -830,18 +838,23 @@ class DiscoveryJobRepository:
             )
         )
         result = self.session.execute(
-            statement.execution_options(synchronize_session="fetch")
+            statement.returning(DiscoveryJobRecord.id).execution_options(
+                synchronize_session="fetch"
+            )
         )
-        if result.rowcount != 1:
+        if result.scalar_one_or_none() is None:
             self.session.rollback()
             current = self.get(tenant_id=tenant_id, job_id=job_id)
             if current is not None and current.state == DiscoveryJobStatus.CANCELLED.value:
                 return current
+            current_lease_expires_at = (
+                _as_utc(current.lease_expires_at) if current is not None else None
+            )
             if (
                 current is not None
                 and current.execution_owner is not None
-                and current.lease_expires_at is not None
-                and _as_utc(current.lease_expires_at) > now
+                and current_lease_expires_at is not None
+                and current_lease_expires_at > now
             ):
                 raise DiscoveryCancellationConflictError(
                     "Cannot resolve cancellation for an actively executing job with a valid worker lease."

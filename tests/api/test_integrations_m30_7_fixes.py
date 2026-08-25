@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+from backend.app.api.v1 import integrations as integrations_module
 from backend.app.api.v1.dependencies import get_db_session as get_db_v1
 from backend.app.auth.api.dependencies import get_db_session as get_db_auth
 from backend.app.auth.application.services import (
@@ -19,14 +22,11 @@ from backend.app.auth.infrastructure.repositories import (
     SQLAlchemyUserRepository,
 )
 from backend.app.config.settings import get_settings
+from backend.app.core import application as application_module
 from backend.app.core.application import create_application
+from backend.app.database import session as database_session
 from backend.app.models.base import BaseModel
-from backend.app.persistence.models import (
-    NetBoxSyncJobRecord,
-    SnapshotDeviceRecord,
-    SnapshotRecord,
-)
-from datetime import UTC, datetime
+from backend.app.persistence.models import NetBoxSyncJobRecord
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -62,8 +62,25 @@ def auth_service(db_session: Session) -> AuthenticationService:
 
 
 @pytest.fixture()
-def client(db_session: Session, auth_service: AuthenticationService) -> TestClient:
+def client(
+    db_session: Session,
+    auth_service: AuthenticationService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> TestClient:
     """FastAPI test client with injected database session and auth."""
+    app_session_factory = sessionmaker(
+        bind=db_session.get_bind(),
+        expire_on_commit=False,
+        class_=Session,
+    )
+    monkeypatch.setattr(application_module, "initialize_database", lambda: None)
+    monkeypatch.setattr(application_module, "SessionLocal", app_session_factory)
+    monkeypatch.setattr(database_session, "SessionLocal", app_session_factory)
+    monkeypatch.setattr(
+        integrations_module,
+        "run_netbox_sync_background",
+        AsyncMock(),
+    )
     app = create_application()
 
     def override_get_db_session() -> Session:
@@ -120,18 +137,20 @@ def test_sync_endpoint_sequential_second_request_blocked(
     job1_id = UUID(job1_data["job_id"])
 
     # Verify job was created in database
-    job1 = db_session.query(NetBoxSyncJobRecord).filter(
-        NetBoxSyncJobRecord.id == job1_id
-    ).first()
+    job1 = (
+        db_session.query(NetBoxSyncJobRecord)
+        .filter(NetBoxSyncJobRecord.id == job1_id)
+        .first()
+    )
     assert job1 is not None
     # Job may be succeeded, running, or queued depending on when we query
     assert job1.status in ["queued", "running", "succeeded", "failed"]
 
-    # Second request should immediately fail with 409 (ALREADY_RUNNING or job still exists)
+    # Second request should fail with 409 while the first job is active.
     # when trying to check for active jobs OR when the first job is still running
     response2 = client.post("/api/v1/integrations/netbox/sync", headers=headers)
     # If first job is still "queued" or "running", second should be 409
-    # If first job already completed to "succeeded", second should succeed (but we can't guarantee timing)
+    # If it already completed, the second request may succeed.
     assert response2.status_code in [202, 409]  # Either succeeds or fails with conflict
     if response2.status_code == 409:
         conflict_data = response2.json()
@@ -185,9 +204,11 @@ def test_sync_job_created_but_background_task_fails_atomically(
     job_id = UUID(job_data["job_id"])
 
     # Verify job exists (may be in various states depending on background task timing)
-    job_record = db_session.query(NetBoxSyncJobRecord).filter(
-        NetBoxSyncJobRecord.id == job_id
-    ).first()
+    job_record = (
+        db_session.query(NetBoxSyncJobRecord)
+        .filter(NetBoxSyncJobRecord.id == job_id)
+        .first()
+    )
     assert job_record is not None
     # Job should be in one of these states after endpoint returns
     assert job_record.status in ["queued", "running", "succeeded", "failed"]
@@ -209,9 +230,11 @@ def test_sync_job_failure_updates_status_after_rollback(
     job_id = UUID(job_id_str)
 
     # Query job - it may be in any valid state
-    job_record = db_session.query(NetBoxSyncJobRecord).filter(
-        NetBoxSyncJobRecord.id == job_id
-    ).first()
+    job_record = (
+        db_session.query(NetBoxSyncJobRecord)
+        .filter(NetBoxSyncJobRecord.id == job_id)
+        .first()
+    )
     assert job_record is not None
     assert job_record.status in ["queued", "running", "succeeded", "failed"]
 
