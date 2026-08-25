@@ -305,7 +305,26 @@ def create_application(settings: Settings | None = None) -> FastAPI:
                 session.rollback()
             finally:
                 session.close()
-            yield
+
+            worker = None
+            from backend.app.discovery.worker import (
+                DiscoveryJobWorker,
+                pytest_worker_disabled,
+            )
+
+            if not pytest_worker_disabled():
+                worker = DiscoveryJobWorker(
+                    session_factory=SessionLocal,
+                    collector_registry=container.discovery_collector_registry,
+                    parser_pipeline=container.discovery_parser_pipeline,
+                    normalization_engine=container.discovery_normalization_engine,
+                )
+                worker.start()
+            try:
+                yield
+            finally:
+                if worker is not None:
+                    await worker.stop()
 
     app = FastAPI(
         title=metadata.name,

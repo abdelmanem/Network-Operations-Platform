@@ -7,11 +7,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.collectors.registry import CollectorRegistry
 from backend.app.discovery.contracts import DiscoveryScopeType
 from backend.app.discovery.execution import DiscoveryExecutionService
+from backend.app.discovery.leases import DISCOVERY_JOB_LEASE_SECONDS
 from backend.app.discovery.scopes import DiscoveryScope
 from backend.app.persistence.discovery_repositories import (
     DiscoveryCancellationConflictError,
@@ -48,10 +51,11 @@ class DiscoveryFanoutService:
         *,
         tenant_id: str,
         parent_job_id: UUID,
-        execution_owner: UUID,
-        lease_seconds: float,
+        execution_owner: UUID | None = None,
+        lease_seconds: float = DISCOVERY_JOB_LEASE_SECONDS,
         lease_lost: Callable[[], bool] | None = None,
     ) -> tuple[DiscoveryDeviceResultRecord, ...]:
+        effective_owner = execution_owner or uuid4()
         parent = self.session.get(DiscoveryJobRecord, parent_job_id)
         if parent is None or parent.tenant_id != tenant_id:
             raise ValueError("Discovery parent job was not found.")
@@ -97,7 +101,7 @@ class DiscoveryFanoutService:
                     tenant_id=tenant_id,
                     job_id=child.id,
                     parent_job_id=parent_job_id,
-                    execution_owner=execution_owner,
+                    execution_owner=effective_owner,
                     lease_seconds=lease_seconds,
                     lease_lost=lease_lost,
                 )
@@ -147,23 +151,46 @@ class DiscoveryFanoutService:
         scope: DiscoveryTargetRecord,
         address: str,
     ) -> tuple[DiscoveryJobRecord, DiscoveryDeviceResultRecord]:
-        target = DiscoveryTargetRecord(
-            tenant_id=tenant_id,
-            identifier=f"{scope.identifier}:{address}",
-            address=address,
-            scope_type="single_device",
-            vendor=scope.vendor,
-            hostname=scope.hostname,
-            platform_hint=scope.platform_hint,
-            preferred_transport=scope.preferred_transport,
-            enabled=scope.enabled,
-            credential_reference=scope.credential_reference,
-            credential_profile_id=scope.credential_profile_id,
-            credential_references=dict(scope.credential_references),
-            allowed_fallback_transports=list(scope.allowed_fallback_transports),
-            metadata_json=dict(scope.metadata_json),
+        identifier = f"{scope.identifier}:{address}"
+        target = self.session.scalar(
+            select(DiscoveryTargetRecord).where(
+                DiscoveryTargetRecord.tenant_id == tenant_id,
+                DiscoveryTargetRecord.identifier == identifier,
+            )
         )
-        self.session.add(target)
+        if target is None:
+            try:
+                with self.session.begin_nested():
+                    new_target = DiscoveryTargetRecord(
+                        tenant_id=tenant_id,
+                        identifier=identifier,
+                        address=address,
+                        scope_type="single_device",
+                        vendor=scope.vendor,
+                        hostname=scope.hostname,
+                        platform_hint=scope.platform_hint,
+                        preferred_transport=scope.preferred_transport,
+                        enabled=scope.enabled,
+                        credential_reference=scope.credential_reference,
+                        credential_profile_id=scope.credential_profile_id,
+                        credential_references=dict(scope.credential_references),
+                        allowed_fallback_transports=list(
+                            scope.allowed_fallback_transports
+                        ),
+                        metadata_json=dict(scope.metadata_json),
+                    )
+                    self.session.add(new_target)
+                    self.session.flush()
+                    target = new_target
+            except IntegrityError:
+                target = self.session.scalar(
+                    select(DiscoveryTargetRecord).where(
+                        DiscoveryTargetRecord.tenant_id == tenant_id,
+                        DiscoveryTargetRecord.identifier == identifier,
+                    )
+                )
+                if target is None:
+                    raise
         run = DiscoveryRunRecord(
             tenant_id=tenant_id,
             target_identifier=target.identifier,

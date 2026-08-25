@@ -558,6 +558,7 @@ function SelectedTargetPanel({
   onTestCredential: () => void
   onManageProfiles: () => void
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const transport =
     profile?.transport_types[0] || target?.preferred_transport || 'ssh'
   const secretStatus = getSecretStatus(profile, profileTestResult)
@@ -645,6 +646,37 @@ function SelectedTargetPanel({
                     Manage profiles
                   </button>
                 </div>
+                {fallbackProfile.provider_reference ? (
+                  <details
+                    className="discovery-secret-advanced"
+                    open={showAdvanced}
+                    onToggle={(e) => setShowAdvanced(e.currentTarget.open)}
+                  >
+                    <summary>Advanced / Secret provider details</summary>
+                    {showAdvanced ? (
+                      <>
+                        <div className="discovery-credential-details">
+                          <div className="discovery-credential-detail">
+                            <span>Secret provider</span>
+                            <strong>Environment</strong>
+                          </div>
+                          <div className="discovery-credential-detail">
+                            <span>Provider reference</span>
+                            <code>{fallbackProfile.provider_reference}</code>
+                          </div>
+                          <div className="discovery-credential-detail">
+                            <span>Secret value</span>
+                            <strong>Never displayed</strong>
+                          </div>
+                        </div>
+                        <p className="discovery-security-note">
+                          The secret value is resolved by the backend at runtime and
+                          is never stored in or returned to the frontend.
+                        </p>
+                      </>
+                    ) : null}
+                  </details>
+                ) : null}
                 <p className="discovery-security-note">
                   Environment secret provider: secret material is resolved by
                   the backend at execution time and is never stored in the
@@ -756,26 +788,34 @@ function SelectedTargetPanel({
                 </div>
 
                 {profile.provider_reference ? (
-                  <details className="discovery-secret-advanced">
+                  <details
+                    className="discovery-secret-advanced"
+                    open={showAdvanced}
+                    onToggle={(e) => setShowAdvanced(e.currentTarget.open)}
+                  >
                     <summary>Advanced / Secret provider details</summary>
-                    <div className="discovery-credential-details">
-                      <div className="discovery-credential-detail">
-                        <span>Secret provider</span>
-                        <strong>Environment</strong>
-                      </div>
-                      <div className="discovery-credential-detail">
-                        <span>Provider reference</span>
-                        <code>{profile.provider_reference}</code>
-                      </div>
-                      <div className="discovery-credential-detail">
-                        <span>Secret value</span>
-                        <strong>Never displayed</strong>
-                      </div>
-                    </div>
-                    <p className="discovery-security-note">
-                      The secret value is resolved by the backend at runtime and
-                      is never stored in or returned to the frontend.
-                    </p>
+                    {showAdvanced ? (
+                      <>
+                        <div className="discovery-credential-details">
+                          <div className="discovery-credential-detail">
+                            <span>Secret provider</span>
+                            <strong>Environment</strong>
+                          </div>
+                          <div className="discovery-credential-detail">
+                            <span>Provider reference</span>
+                            <code>{profile.provider_reference}</code>
+                          </div>
+                          <div className="discovery-credential-detail">
+                            <span>Secret value</span>
+                            <strong>Never displayed</strong>
+                          </div>
+                        </div>
+                        <p className="discovery-security-note">
+                          The secret value is resolved by the backend at runtime and
+                          is never stored in or returned to the frontend.
+                        </p>
+                      </>
+                    ) : null}
                   </details>
                 ) : null}
 
@@ -973,14 +1013,31 @@ function DiscoveryResultsPanel({
     return null
   }
 
+  const discoveredCount = deviceResults.filter(
+    (d) => d.state === 'succeeded'
+  ).length
+  const scannedCount = deviceResults.length
+  const unavailableCount = deviceResults.filter(
+    (d) => d.state === 'failed'
+  ).length
+
+  const summarySuffix =
+    scannedCount > 1
+      ? ` (${scannedCount} addresses scanned${
+          unavailableCount > 0 ? `, ${unavailableCount} unavailable` : ''
+        })`
+      : scannedCount === 1 && unavailableCount === 1
+        ? ' (1 address scanned, 1 unavailable)'
+        : ''
+
   return (
     <section className="discovery-panel discovery-results">
       <div className="discovery-panel-header">
         <div>
           <h2>Discovery results</h2>
           <p className="discovery-results-summary">
-            {deviceResults.length} device
-            {deviceResults.length !== 1 ? 's' : ''} discovered
+            {discoveredCount} device{discoveredCount !== 1 ? 's' : ''} discovered
+            {summarySuffix}
           </p>
         </div>
       </div>

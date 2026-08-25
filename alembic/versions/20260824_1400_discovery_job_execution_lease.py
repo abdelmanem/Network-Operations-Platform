@@ -2,6 +2,11 @@
 
 Revision ID: 20260824_1400
 Revises: 20260824_1300
+
+This revision only adds nullable columns and an index. It must not UPDATE
+existing discovery_jobs rows, automatically resume running work, or modify
+job d792bcff-fb06-4428-ab53-557e0cd6eeb9. Legacy running jobs with
+execution_owner IS NULL remain untouched after upgrade.
 """
 
 from __future__ import annotations

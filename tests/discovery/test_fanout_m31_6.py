@@ -98,3 +98,86 @@ async def test_cidr_fanout_creates_independent_bounded_results() -> None:
     assert all(attempt.result == "success" for attempt in attempts)
     assert all(attempt.started_at is not None for attempt in attempts)
     assert all(attempt.completed_at is not None for attempt in attempts)
+
+
+@pytest.mark.anyio
+async def test_cidr_fanout_reuses_existing_child_targets_on_rerun() -> None:
+    """Verify that re-running the same CIDR target reuses child targets without duplicate-key errors."""
+    session = _session()
+    target = DiscoveryTargetRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        identifier="scope-01",
+        address="192.0.2.0/30",
+        scope_type=DiscoveryScopeType.CIDR_NETWORK.value,
+        scope_cidr="192.0.2.0/30",
+        enabled=True,
+        credential_reference="credential-profile:cisco",
+        credential_profile_id="credential-profile:cisco",
+        metadata_json={"platform_family": "catalyst-2960x"},
+    )
+    run1 = DiscoveryRunRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        target_identifier="scope-01",
+        status="started",
+        metadata_json={},
+    )
+    session.add_all([target, run1])
+    session.flush()
+    parent1 = DiscoveryJobRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        target_id=target.id,
+        run_id=run1.id,
+        state="running",
+        requested_capabilities={"collector_name": "fanout"},
+        attempts=1,
+    )
+    session.add(parent1)
+    session.commit()
+
+    registry = CollectorRegistry()
+    registry.register(FanoutCollector(name="fanout", capabilities=frozenset()))
+
+    # First run: creates child targets "scope-01:192.0.2.1" and "scope-01:192.0.2.2"
+    results1 = await DiscoveryFanoutService(
+        session, registry, concurrency=2, max_targets=10
+    ).execute(tenant_id="tenant-a", parent_job_id=parent1.id)
+    assert len(results1) == 2
+    assert len(session.scalars(select(DiscoveryTargetRecord)).all()) == 3  # Root + 2 children
+
+    parent1.state = "succeeded"
+    session.commit()
+
+    # Second run for the SAME CIDR target
+    run2 = DiscoveryRunRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        target_identifier="scope-01",
+        status="started",
+        metadata_json={},
+    )
+    session.add(run2)
+    session.flush()
+    parent2 = DiscoveryJobRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        target_id=target.id,
+        run_id=run2.id,
+        state="running",
+        requested_capabilities={"collector_name": "fanout"},
+        attempts=1,
+    )
+    session.add(parent2)
+    session.commit()
+
+    # Second execution MUST succeed by reusing the existing targets
+    results2 = await DiscoveryFanoutService(
+        session, registry, concurrency=2, max_targets=10
+    ).execute(tenant_id="tenant-a", parent_job_id=parent2.id)
+    assert len(results2) == 2
+    assert all(r.state == "succeeded" for r in results2)
+    # Total targets remains 3 (1 root + 2 child targets reused, not duplicated)
+    assert len(session.scalars(select(DiscoveryTargetRecord)).all()) == 3
+

@@ -197,3 +197,160 @@ def test_device_identity_match_falls_back_to_serial() -> None:
     )
 
     assert matched is device
+
+
+def test_compare_device_resolves_multi_snapshot_cidr_device_and_serial_variance() -> None:
+    session = _session()
+    try:
+        run_id_a = UUID("e1852329-6c8b-44b1-9b7d-80865a621b34")
+        run_id_b = UUID("93965f09-a96a-40ef-9a67-462020c3f98b")
+        session.add_all([
+            DiscoveryRunRecord(
+                id=run_id_a,
+                tenant_id="tenant-a",
+                target_identifier="coreSW",
+                target_address="192.168.137.225",
+                metadata_json={},
+            ),
+            DiscoveryRunRecord(
+                id=run_id_b,
+                tenant_id="tenant-a",
+                target_identifier="Cisco SW 40:192.168.40.2",
+                target_address="192.168.40.2",
+                metadata_json={},
+            ),
+        ])
+
+        expected = NetBoxInventorySnapshot(
+            devices=(
+                Device(
+                    name="Radisson_Blu_BB",
+                    serial="FOX1208GJ74",
+                    primary_ip="192.168.40.1/24",
+                    device_type=DeviceType(
+                        manufacturer=Manufacturer(name="Cisco", slug="cisco"),
+                        model="WS-C4506-E",
+                        slug="ws-c4506-e",
+                    ),
+                    platform=Platform(name="Cisco_SW_Routers", slug="cisco-sw-routers"),
+                ),
+                Device(
+                    name="New-Ground-SW1",
+                    serial="MTC200505KS",
+                    primary_ip="192.168.40.2/24",
+                    device_type=DeviceType(
+                        manufacturer=Manufacturer(name="Cisco", slug="cisco"),
+                        model="WS-C2960X-24PS-L",
+                        slug="ws-c2960x-24ps-l",
+                    ),
+                    platform=Platform(name="Cisco_SW_Routers", slug="cisco-sw-routers"),
+                ),
+                Device(
+                    name="sw-true-missing",
+                    serial="MISSING_SERIAL",
+                    primary_ip="192.168.40.99/24",
+                    device_type=DeviceType(
+                        manufacturer=Manufacturer(name="Cisco", slug="cisco"),
+                        model="WS-C2960X-24PS-L",
+                        slug="ws-c2960x-24ps-l",
+                    ),
+                    platform=Platform(name="Cisco_SW_Routers", slug="cisco-sw-routers"),
+                ),
+            )
+        )
+
+        observed_a = InventorySnapshot(
+            devices=(
+                DeviceSnapshot(
+                    device_id="coreSW",
+                    name="Radisson_Blu_BB",
+                    manufacturer="Cisco",
+                    model="WS-C4506-E",
+                    serial_number="FOX1208GJ74",
+                    management_ip="192.168.137.225",
+                    platform="ios",
+                ),
+            ),
+            source="coreSW",
+        )
+
+        observed_b = InventorySnapshot(
+            devices=(
+                DeviceSnapshot(
+                    device_id="Cisco SW 40:192.168.40.2",
+                    name="New-Ground-SW1",
+                    manufacturer="Cisco",
+                    model="WS-C2960X-24PS-L",
+                    serial_number="FCW2007B043",
+                    management_ip="192.168.40.2",
+                    platform="ios",
+                ),
+            ),
+            source="Cisco SW 40:192.168.40.2",
+        )
+
+        repo = SnapshotRepository(session)
+        netbox_snap = repo.add_netbox_snapshot(expected)
+        snap_a = repo.add_live_snapshot(observed_a, discovery_run_id=run_id_a)
+        snap_b = repo.add_live_snapshot(observed_b, discovery_run_id=run_id_b)
+        session.commit()
+
+        # Comparison only compared NetBox vs snap_a (so New-Ground-SW1 was missing in that comparison record)
+        comp_id = SnapshotComparisonService(session).compare(
+            expected_snapshot_id=netbox_snap.id,
+            observed_snapshot_id=snap_a.id,
+            tenant_id="tenant-a",
+        )
+
+        # TEST 1: CIDR multi-snapshot device resolution
+        response_sw1 = compare_device(
+            db_session=session,
+            device_id="New-Ground-SW1",
+            run_id=comp_id,
+        )
+        assert response_sw1.expected_state is not None
+        assert response_sw1.observed_state is not None
+        assert response_sw1.expected_state.name == "New-Ground-SW1"
+        assert response_sw1.observed_state.name == "New-Ground-SW1"
+        assert response_sw1.expected_state.serial_number == "MTC200505KS"
+        assert response_sw1.observed_state.serial_number == "FCW2007B043"
+        assert response_sw1.observed_state.management_ip == "192.168.40.2"
+
+        # Verify serial variance is modified, NOT missing
+        serial_vars = [v for v in response_sw1.variances if v.field_name in {"serial", "serial_number"}]
+        assert len(serial_vars) == 1
+        assert serial_vars[0].difference_type == "modified"
+        assert serial_vars[0].expected_value == "MTC200505KS"
+        assert serial_vars[0].observed_value == "FCW2007B043"
+        assert not any(v.difference_type == "missing" for v in response_sw1.variances)
+
+        # TEST 2: Alias matching preservation (Radisson_Blu_BB <-> coreSW)
+        response_rbb = compare_device(
+            db_session=session,
+            device_id="Radisson_Blu_BB",
+            run_id=comp_id,
+        )
+        assert response_rbb.expected_state is not None
+        assert response_rbb.observed_state is not None
+        assert response_rbb.expected_state.name == "Radisson_Blu_BB"
+        assert response_rbb.observed_state.name == "Radisson_Blu_BB"
+        assert response_rbb.observed_state.device_id == "coreSW"
+
+        # TEST 3: True missing device (exists in NetBox, no live snapshot)
+        response_missing = compare_device(
+            db_session=session,
+            device_id="sw-true-missing",
+            run_id=comp_id,
+        )
+        assert response_missing.expected_state is not None
+        assert response_missing.observed_state is None
+        assert any(v.difference_type == "missing" for v in response_missing.variances)
+
+        # Repository helper verification
+        live_devs = repo.get_latest_live_devices()
+        assert len(live_devs) == 2
+        assert {d.name for d in live_devs} == {"Radisson_Blu_BB", "New-Ground-SW1"}
+
+    finally:
+        session.close()
+

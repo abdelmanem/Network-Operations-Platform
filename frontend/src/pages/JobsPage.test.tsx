@@ -4,14 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { discoveryJobsErrorTitle } from '../api/discovery'
 import type { DiscoveryApiJobResponse } from '../types/api'
 
-const { cancelJob, listJobs } = vi.hoisted(() => ({
+const { cancelJob, resolveJob, listJobs } = vi.hoisted(() => ({
   cancelJob: vi.fn(),
+  resolveJob: vi.fn(),
   listJobs: vi.fn(),
 }))
 
 vi.mock('../api/discovery', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/discovery')>()),
   cancelDiscoveryApiJob: cancelJob,
+  resolveDiscoveryApiJobCancellation: resolveJob,
   listDiscoveryApiJobs: listJobs,
 }))
 
@@ -68,6 +70,7 @@ describe('JobsPage', () => {
   beforeEach(() => {
     listJobs.mockReset()
     cancelJob.mockReset()
+    resolveJob.mockReset()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
   afterEach(() => vi.useRealTimers())
@@ -202,5 +205,95 @@ describe('JobsPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Permission required.')
+  })
+
+  it('shows Cancellation requested… disabled when a healthy job with active worker lease has cancellation requested', async () => {
+    listJobs.mockResolvedValue(
+      response([
+        {
+          ...job('running'),
+          cancellation_requested_at: '2026-08-09T10:01:30Z',
+          has_active_lease: true,
+          execution_owner: 'owner-uuid',
+          lease_expires_at: '2099-01-01T00:00:00Z',
+        },
+      ]),
+    )
+    renderPage()
+
+    const button = await screen.findByRole('button', {
+      name: 'Cancellation requested…',
+    })
+    expect(button).toBeInTheDocument()
+    expect(button).toBeDisabled()
+  })
+
+  it('shows Resolve cancellation for a cancellation-requested job with no active worker lease', async () => {
+    listJobs.mockResolvedValue(
+      response([
+        {
+          ...job('running', 'stale-cancelled'),
+          cancellation_requested_at: '2026-08-09T10:01:30Z',
+          has_active_lease: false,
+          execution_owner: null,
+          lease_expires_at: null,
+        },
+      ]),
+    )
+    resolveJob.mockResolvedValue({
+      ...job('running', 'stale-cancelled'),
+      status: 'cancelled',
+    })
+    renderPage()
+
+    const resolveBtn = await screen.findByRole('button', {
+      name: 'Resolve cancellation',
+    })
+    expect(resolveBtn).toBeInTheDocument()
+    expect(resolveBtn).not.toBeDisabled()
+
+    fireEvent.click(resolveBtn)
+
+    await waitFor(() =>
+      expect(resolveJob).toHaveBeenCalledWith('job-stale-cancelled'),
+    )
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringMatching(/does not terminate active network I\/O/i),
+    )
+  })
+
+  it('does not resolve cancellation when operator declines confirmation prompt', async () => {
+    vi.mocked(window.confirm).mockReturnValue(false)
+    listJobs.mockResolvedValue(
+      response([
+        {
+          ...job('running', 'declined'),
+          cancellation_requested_at: '2026-08-09T10:01:30Z',
+          has_active_lease: false,
+        },
+      ]),
+    )
+    renderPage()
+
+    const resolveBtn = await screen.findByRole('button', {
+      name: 'Resolve cancellation',
+    })
+    fireEvent.click(resolveBtn)
+    expect(resolveJob).not.toHaveBeenCalled()
+  })
+
+  it('shows no action for terminal jobs (succeeded, cancelled, failed)', async () => {
+    listJobs.mockResolvedValue(
+      response([
+        job('succeeded', 's1'),
+        { ...job('failed', 'c1'), status: 'cancelled' },
+        job('failed', 'f1'),
+      ]),
+    )
+    renderPage()
+
+    await screen.findByText('job-s1')
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Resolve cancellation' })).toBeNull()
   })
 })

@@ -283,6 +283,10 @@ class DiscoveryJobResponse(BaseModel):
     cancellation_requested_at: datetime | None = None
     cancellation_requested_by: UUID | None = None
     cancellation_reason: str | None = None
+    execution_owner: UUID | None = None
+    lease_expires_at: datetime | None = None
+    last_heartbeat_at: datetime | None = None
+    has_active_lease: bool = False
 
 
 class DiscoveryJobListResponse(PaginatedResponse[DiscoveryJobResponse]):

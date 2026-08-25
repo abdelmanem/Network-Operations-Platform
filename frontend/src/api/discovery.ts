@@ -165,6 +165,19 @@ export async function cancelDiscoveryApiJob(
   }
 }
 
+export async function resolveDiscoveryApiJobCancellation(
+  jobId: string,
+): Promise<DiscoveryApiJobResponse> {
+  try {
+    const response = await api.post<DiscoveryApiJobResponse>(
+      `/api/v1/discovery/jobs/${jobId}/cancel/force`,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
 export async function getDiscoveryApiJob(
   jobId: string,
 ): Promise<DiscoveryApiJobResponse> {

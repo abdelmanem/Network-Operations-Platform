@@ -180,6 +180,25 @@ def compare_device(
                 serial_number=expected_device.serial_number,
             )
 
+    if observed_device is None:
+        live_devices = snapshot_repo.get_latest_live_devices()
+        observed_device = _match_device_by_identity(
+            live_devices,
+            device_id=device_id,
+            name=(expected_device.name if expected_device is not None else device_id),
+            serial_number=(
+                expected_device.serial_number
+                if expected_device is not None
+                else None
+            ),
+        )
+        if observed_device is None and expected_device is not None:
+            observed_device = _match_device_by_identity(
+                live_devices,
+                name=expected_device.name,
+                serial_number=expected_device.serial_number,
+            )
+
     if expected_device is None and observed_device is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -192,6 +211,8 @@ def compare_device(
     }
     if expected_device is not None:
         target_names.add(_normalize_device_identity(expected_device.name))
+    if observed_device is not None:
+        target_names.add(_normalize_device_identity(observed_device.name))
     findings = tuple(
         finding
         for finding in comparison.findings
@@ -216,6 +237,16 @@ def compare_device(
         if isinstance(finding.expected_state, dict) and isinstance(
             finding.observed_state, dict
         ):
+            diff_type = str(
+                finding.expected_state.get(
+                    "difference_type",
+                    finding.observed_state.get("difference_type"),
+                )
+                or "UNKNOWN"
+            )
+            if observed_device is not None and diff_type.lower() == "missing":
+                continue
+
             evidence_details = next(
                 (
                     evidence.details
@@ -233,15 +264,57 @@ def compare_device(
                 ),
                 expected_value=finding.expected_state.get("value"),
                 observed_value=finding.observed_state.get("value"),
-                difference_type=str(
-                    finding.expected_state.get(
-                        "difference_type",
-                        finding.observed_state.get("difference_type"),
-                    )
-                    or "UNKNOWN"
-                ),
+                difference_type=diff_type,
             )
             variances.append(variance)
+
+    # When both expected and observed live devices are present, ensure field-level
+    # attribute differences (e.g. serial_number) are represented even if the comparison
+    # record did not contain findings for this specific snapshot.
+    if expected_device is not None and observed_device is not None:
+        existing_fields = {v.field_name for v in variances}
+        if (
+            expected_device.serial_number
+            and observed_device.serial_number
+            and _normalize_device_identity(expected_device.serial_number)
+            != _normalize_device_identity(observed_device.serial_number)
+            and "serial_number" not in existing_fields
+            and "serial" not in existing_fields
+        ):
+            variances.append(
+                VarianceSummary(
+                    field_name="serial_number",
+                    expected_value=expected_device.serial_number,
+                    observed_value=observed_device.serial_number,
+                    difference_type="modified",
+                )
+            )
+        if (
+            expected_device.model
+            and observed_device.model
+            and _normalize_device_identity(expected_device.model)
+            != _normalize_device_identity(observed_device.model)
+            and "model" not in existing_fields
+        ):
+            variances.append(
+                VarianceSummary(
+                    field_name="model",
+                    expected_value=expected_device.model,
+                    observed_value=observed_device.model,
+                    difference_type="modified",
+                )
+            )
+
+    # If observed_device is missing, ensure a missing variance is present
+    if observed_device is None and not variances:
+        variances.append(
+            VarianceSummary(
+                field_name="device",
+                expected_value=expected_device.name if expected_device else device_id,
+                observed_value=None,
+                difference_type="missing",
+            )
+        )
 
     # Build comparison state objects
     expected_state = None

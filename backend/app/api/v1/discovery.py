@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
 from uuid import UUID, uuid4
 
@@ -143,7 +144,6 @@ def list_credential_profiles(
         for record in CredentialProfileRepository(db_session).list(tenant_id=tenant_id)
     ]
 
-
 @router.post(
     "/credential-profiles",
     response_model=CredentialProfileResponse,
@@ -269,6 +269,56 @@ def cancel_job(
     )
     if job.state == DiscoveryJobStatus.RUNNING.value:
         response.status_code = status.HTTP_202_ACCEPTED
+    return _job_response(job)
+
+
+@router.post(
+    "/jobs/{job_id}/cancel/force",
+    response_model=DiscoveryJobResponse,
+    summary="Resolve stale discovery job cancellation",
+)
+def resolve_job_cancellation(
+    job_id: UUID,
+    request: Request,
+    response: Response,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    user: Annotated[User, Depends(require_permission("discovery:job:cancel:force"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
+) -> DiscoveryJobResponse:
+    jobs = DiscoveryJobRepository(db_session)
+    try:
+        job = jobs.resolve_stale_cancellation(
+            tenant_id=tenant_id,
+            job_id=job_id,
+        )
+        db_session.commit()
+    except DiscoveryCancellationConflictError as exc:
+        db_session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DiscoveryPersistenceError as exc:
+        db_session.rollback()
+        raise HTTPException(
+            status_code=404, detail="Discovery job was not found."
+        ) from exc
+
+    audit_service.record_api_activity(
+        event_type="discovery.job_cancellation_resolved",
+        actor_id=user.id,
+        tenant_id=tenant_id,
+        resource_type="discovery_job",
+        resource_id=str(job.id),
+        outcome="cancelled",
+        request_id=request.headers.get("X-Request-ID"),
+        metadata={
+            "resolved_at": (
+                job.completed_at.isoformat()
+                if job.completed_at is not None
+                else None
+            ),
+            "reason": job.cancellation_reason,
+        },
+    )
     return _job_response(job)
 
 
@@ -565,6 +615,19 @@ def _job_response(record: DiscoveryJobRecord) -> DiscoveryJobResponse:
             "cancellation_requested_at": record.cancellation_requested_at,
             "cancellation_requested_by": record.cancellation_requested_by,
             "cancellation_reason": record.cancellation_reason,
+            "execution_owner": record.execution_owner,
+            "lease_expires_at": record.lease_expires_at,
+            "last_heartbeat_at": record.last_heartbeat_at,
+            "has_active_lease": bool(
+                record.execution_owner is not None
+                and record.lease_expires_at is not None
+                and (
+                    record.lease_expires_at.replace(tzinfo=UTC)
+                    if record.lease_expires_at.tzinfo is None
+                    else record.lease_expires_at
+                )
+                > datetime.now(UTC)
+            ),
         }
     )
 

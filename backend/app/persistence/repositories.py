@@ -250,6 +250,21 @@ class SnapshotRepository:
         )
         return self.session.scalars(statement).first()
 
+    def get_latest_live_devices(self) -> tuple[SnapshotDeviceRecord, ...]:
+        """Return all live devices across live snapshots, ordered by creation time descending."""
+        statement = (
+            select(SnapshotDeviceRecord)
+            .join(SnapshotRecord)
+            .where(SnapshotRecord.source == SnapshotSource.LIVE.value)
+            .order_by(SnapshotDeviceRecord.created_at.desc())
+            .options(
+                selectinload(SnapshotDeviceRecord.interfaces),
+                selectinload(SnapshotDeviceRecord.vlans),
+                selectinload(SnapshotDeviceRecord.neighbors),
+            )
+        )
+        return tuple(self.session.scalars(statement).all())
+
     def get_snapshot_devices(
         self,
         snapshot_id: UUID,

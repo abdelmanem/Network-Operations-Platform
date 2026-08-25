@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -19,6 +19,12 @@ from backend.app.discovery.contracts import (
     DiscoveryFailureCode,
     DiscoveryJobStatus,
     transition_job,
+)
+from backend.app.discovery.leases import (
+    DISCOVERY_JOB_LEASE_SECONDS,
+    HEARTBEAT_LOST_MESSAGE,
+    LEASE_EXPIRED_MESSAGE,
+    PROTECTED_DISCOVERY_JOB_ID,
 )
 from backend.app.persistence.models import (
     CredentialProfileRecord,
@@ -52,6 +58,14 @@ class DiscoveryCancellationConflictError(DiscoveryPersistenceError):
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _canonical_payload(payload: dict[str, Any]) -> str:
@@ -287,6 +301,9 @@ class DiscoveryJobRepository:
             ),
             timeout_seconds=timeout_seconds,
             correlation_id=correlation_id,
+            execution_owner=None,
+            lease_expires_at=None,
+            last_heartbeat_at=None,
         )
         self.session.add(record)
         try:
@@ -317,6 +334,7 @@ class DiscoveryJobRepository:
             .where(
                 DiscoveryJobRecord.state == DiscoveryJobStatus.QUEUED.value,
                 DiscoveryJobRecord.parent_job_id.is_(None),
+                DiscoveryJobRecord.id != PROTECTED_DISCOVERY_JOB_ID,
                 DiscoveryJobRecord.execution_owner.is_(None),
                 DiscoveryJobRecord.lease_expires_at.is_(None),
                 DiscoveryJobRecord.last_heartbeat_at.is_(None),
@@ -358,20 +376,22 @@ class DiscoveryJobRepository:
         tenant_id: str,
         job_id: UUID,
         execution_owner: UUID | None = None,
-        lease_seconds: float | None = None,
+        lease_seconds: float = DISCOVERY_JOB_LEASE_SECONDS,
     ) -> DiscoveryJobRecord:
-        """Atomically transition one queued job to running."""
+        """Atomically transition one queued job to a leased running owner."""
 
+        if job_id == PROTECTED_DISCOVERY_JOB_ID:
+            raise InvalidDiscoveryTransitionError(
+                "Protected discovery job cannot be claimed."
+            )
+        if lease_seconds <= 0:
+            raise InvalidDiscoveryTransitionError("A positive lease is required.")
+        owner = execution_owner or uuid4()
         job = self.get(tenant_id=tenant_id, job_id=job_id)
         if job is None:
             raise DiscoveryResourceNotFoundError("Discovery job was not found.")
         self._lock_target(tenant_id, job.target_id)
         now = _utc_now()
-        lease_expires_at = (
-            now + timedelta(seconds=lease_seconds)
-            if execution_owner is not None and lease_seconds is not None
-            else None
-        )
         result = cast(
             CursorResult[Any],
             self.session.execute(
@@ -389,9 +409,9 @@ class DiscoveryJobRepository:
                     started_at=now,
                     updated_at=now,
                     attempts=DiscoveryJobRecord.attempts + 1,
-                    execution_owner=execution_owner,
-                    lease_expires_at=lease_expires_at,
-                    last_heartbeat_at=(now if execution_owner is not None else None),
+                    execution_owner=owner,
+                    lease_expires_at=now + timedelta(seconds=lease_seconds),
+                    last_heartbeat_at=now,
                 )
             ),
         )
@@ -538,6 +558,9 @@ class DiscoveryJobRepository:
                 completed_at=now,
                 failure_code=DiscoveryFailureCode.CANCELLED.value,
                 failure_message=reason,
+                execution_owner=None,
+                lease_expires_at=None,
+                last_heartbeat_at=None,
             )
         statement = update(DiscoveryJobRecord).where(
             DiscoveryJobRecord.id == job_id,
@@ -601,20 +624,155 @@ class DiscoveryJobRepository:
             expected_execution_owner=expected_execution_owner,
         )
 
+    def resolve_stale_cancellation(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+    ) -> DiscoveryJobRecord:
+        """Resolve a job with cancellation requested and no active execution lease.
+
+        Atomically transitions the running job to cancelled state, clears
+        ownership and lease tracking fields, and sets finished/completion time,
+        while preserving all cancellation request metadata, evidence, and results.
+        Rejects with conflict if the job is actively executing with a valid lease.
+        """
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            raise DiscoveryResourceNotFoundError("Discovery job was not found.")
+
+        if job.state == DiscoveryJobStatus.CANCELLED.value:
+            return job
+
+        if DiscoveryJobStatus(job.state).is_terminal:
+            raise DiscoveryCancellationConflictError(
+                f"Discovery job is already in terminal state '{job.state}'."
+            )
+
+        if job.state != DiscoveryJobStatus.RUNNING.value:
+            raise DiscoveryCancellationConflictError(
+                f"Cannot force resolve job in '{job.state}' state; use standard cancellation."
+            )
+
+        if job.cancellation_requested_at is None:
+            raise DiscoveryCancellationConflictError(
+                "Cancellation was not requested for this discovery job."
+            )
+
+        now = _utc_now()
+
+        # Verify whether there is a valid active lease held by a worker
+        if (
+            job.execution_owner is not None
+            and job.lease_expires_at is not None
+            and _as_utc(job.lease_expires_at) > now
+        ):
+            raise DiscoveryCancellationConflictError(
+                "Cannot resolve cancellation for an actively executing job with a valid worker lease."
+            )
+
+        statement = (
+            update(DiscoveryJobRecord)
+            .where(
+                DiscoveryJobRecord.id == job_id,
+                DiscoveryJobRecord.tenant_id == tenant_id,
+                DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+                DiscoveryJobRecord.cancellation_requested_at.is_not(None),
+                or_(
+                    DiscoveryJobRecord.execution_owner.is_(None),
+                    DiscoveryJobRecord.lease_expires_at.is_(None),
+                    DiscoveryJobRecord.lease_expires_at <= now,
+                ),
+            )
+            .values(
+                state=DiscoveryJobStatus.CANCELLED.value,
+                failure_code=DiscoveryFailureCode.CANCELLED.value,
+                failure_message=job.cancellation_reason or "Cancelled by operator.",
+                completed_at=now,
+                execution_owner=None,
+                lease_expires_at=None,
+                last_heartbeat_at=None,
+                updated_at=now,
+            )
+        )
+        result = self.session.execute(
+            statement.execution_options(synchronize_session="fetch")
+        )
+        if result.rowcount != 1:
+            self.session.rollback()
+            current = self.get(tenant_id=tenant_id, job_id=job_id)
+            if current is not None and current.state == DiscoveryJobStatus.CANCELLED.value:
+                return current
+            if (
+                current is not None
+                and current.execution_owner is not None
+                and current.lease_expires_at is not None
+                and _as_utc(current.lease_expires_at) > now
+            ):
+                raise DiscoveryCancellationConflictError(
+                    "Cannot resolve cancellation for an actively executing job with a valid worker lease."
+                )
+            raise DiscoveryCancellationConflictError(
+                "Discovery job state changed before cancellation could be resolved."
+            )
+
+        # Reconcile child jobs if this was a parent job
+        child_ids = list(
+            self.session.scalars(
+                select(DiscoveryJobRecord.id).where(
+                    DiscoveryJobRecord.tenant_id == tenant_id,
+                    DiscoveryJobRecord.parent_job_id == job_id,
+                    DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+                )
+            )
+        )
+        if child_ids:
+            self.session.execute(
+                update(DiscoveryJobRecord)
+                .where(
+                    DiscoveryJobRecord.id.in_(child_ids),
+                    DiscoveryJobRecord.tenant_id == tenant_id,
+                    DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+                )
+                .values(
+                    state=DiscoveryJobStatus.CANCELLED.value,
+                    failure_code=DiscoveryFailureCode.CANCELLED.value,
+                    failure_message=job.cancellation_reason or "Cancelled by operator.",
+                    completed_at=now,
+                    execution_owner=None,
+                    lease_expires_at=None,
+                    last_heartbeat_at=None,
+                    updated_at=now,
+                )
+            )
+
+        self.session.flush()
+        return self.get(tenant_id=tenant_id, job_id=job_id)  # type: ignore[return-value]
+
     def recover_expired_owned_jobs(
         self,
         *,
         stale_before: datetime,
     ) -> tuple[tuple[str, UUID], ...]:
-        """Return only leased running jobs that are safe to reconcile."""
+        """Return expired leased root jobs that are safe to reconcile.
+
+        Cross-tenant discovery is intentional. Callers must still recover each
+        job with an explicit tenant_id. Unowned running jobs and the protected
+        job id are never returned.
+        """
 
         statement = select(DiscoveryJobRecord.tenant_id, DiscoveryJobRecord.id).where(
             DiscoveryJobRecord.state == DiscoveryJobStatus.RUNNING.value,
+            DiscoveryJobRecord.parent_job_id.is_(None),
+            DiscoveryJobRecord.id != PROTECTED_DISCOVERY_JOB_ID,
             DiscoveryJobRecord.execution_owner.is_not(None),
             DiscoveryJobRecord.lease_expires_at.is_not(None),
+            DiscoveryJobRecord.last_heartbeat_at.is_not(None),
             DiscoveryJobRecord.lease_expires_at < stale_before,
         )
-        return tuple((tenant_id, job_id) for tenant_id, job_id in self.session.execute(statement))
+        return tuple(
+            (tenant_id, job_id) for tenant_id, job_id in self.session.execute(statement)
+        )
 
     def recover_expired_owned_job(
         self,
@@ -625,35 +783,117 @@ class DiscoveryJobRepository:
     ) -> DiscoveryJobRecord | None:
         """Terminally reconcile one expired lease without re-running network work."""
 
+        if job_id == PROTECTED_DISCOVERY_JOB_ID:
+            return None
         job = self.get(tenant_id=tenant_id, job_id=job_id)
         if (
             job is None
             or job.state != DiscoveryJobStatus.RUNNING.value
             or job.execution_owner is None
             or job.lease_expires_at is None
-            or job.lease_expires_at >= stale_before
+            or job.last_heartbeat_at is None
+            or (_as_utc(job.lease_expires_at) or _utc_now()) >= (_as_utc(stale_before) or _utc_now())
         ):
             return None
-        target_state = (
-            DiscoveryJobStatus.CANCELLED
-            if self.cancellation_requested(tenant_id=tenant_id, job_id=job_id)
-            else DiscoveryJobStatus.FAILED
+        return self._reconcile_owned_tree(
+            tenant_id=tenant_id,
+            job_id=job_id,
+            execution_owner=job.execution_owner,
+            failure_message=LEASE_EXPIRED_MESSAGE,
         )
+
+    def abandon_owned_job(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        execution_owner: UUID,
+        failure_message: str = HEARTBEAT_LOST_MESSAGE,
+    ) -> DiscoveryJobRecord | None:
+        """Stop an owned running tree at a cooperative boundary.
+
+        Used when a live worker loses its heartbeat so a second worker cannot
+        recover a job that may still be executing.
+        """
+
+        if job_id == PROTECTED_DISCOVERY_JOB_ID:
+            return None
+        job = self.owned_running_job(
+            tenant_id=tenant_id, job_id=job_id, execution_owner=execution_owner
+        )
+        if job is None:
+            return None
+        return self._reconcile_owned_tree(
+            tenant_id=tenant_id,
+            job_id=job_id,
+            execution_owner=execution_owner,
+            failure_message=failure_message,
+        )
+
+    def _reconcile_owned_tree(
+        self,
+        *,
+        tenant_id: str,
+        job_id: UUID,
+        execution_owner: UUID,
+        failure_message: str,
+    ) -> DiscoveryJobRecord | None:
+        job = self.get(tenant_id=tenant_id, job_id=job_id)
+        if job is None:
+            return None
+        cancel = self.cancellation_requested(tenant_id=tenant_id, job_id=job_id)
+        target_state = (
+            DiscoveryJobStatus.CANCELLED if cancel else DiscoveryJobStatus.FAILED
+        )
+        failure_code = (
+            DiscoveryFailureCode.CANCELLED.value
+            if cancel
+            else DiscoveryFailureCode.DISCOVERY_FAILED.value
+        )
+        message = (
+            job.cancellation_reason or "Cancelled by operator."
+            if cancel
+            else failure_message
+        )
+        children = self.session.scalars(
+            select(DiscoveryJobRecord).where(
+                DiscoveryJobRecord.tenant_id == tenant_id,
+                DiscoveryJobRecord.parent_job_id == job_id,
+                DiscoveryJobRecord.state.in_(
+                    (
+                        DiscoveryJobStatus.QUEUED.value,
+                        DiscoveryJobStatus.RUNNING.value,
+                    )
+                ),
+            )
+        ).all()
+        for child in children:
+            if child.state == DiscoveryJobStatus.QUEUED.value:
+                self.transition(
+                    tenant_id=tenant_id,
+                    job_id=child.id,
+                    target_state=target_state,
+                    failure_code=failure_code,
+                    failure_message=message,
+                )
+                continue
+            if child.execution_owner != execution_owner:
+                continue
+            self.transition(
+                tenant_id=tenant_id,
+                job_id=child.id,
+                target_state=target_state,
+                failure_code=failure_code,
+                failure_message=message,
+                expected_execution_owner=execution_owner,
+            )
         return self.transition(
             tenant_id=tenant_id,
             job_id=job_id,
             target_state=target_state,
-            failure_code=(
-                DiscoveryFailureCode.CANCELLED.value
-                if target_state == DiscoveryJobStatus.CANCELLED
-                else DiscoveryFailureCode.DISCOVERY_FAILED.value
-            ),
-            failure_message=(
-                job.cancellation_reason or "Cancelled by operator."
-                if target_state == DiscoveryJobStatus.CANCELLED
-                else "Discovery worker lease expired; execution was not resumed."
-            ),
-            expected_execution_owner=job.execution_owner,
+            failure_code=failure_code,
+            failure_message=message,
+            expected_execution_owner=execution_owner,
         )
 
     def record_selection(
@@ -751,8 +991,17 @@ class DiscoveryTransportAttemptRepository:
         record.result = result
         record.failure_code = failure_code
         record.completed_at = completed_at
+        started_at = record.started_at
+        if started_at is not None and started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=UTC)
         record.duration_ms = max(
-            0, int((completed_at - record.started_at).total_seconds() * 1000)
+            0,
+            int(
+                (
+                    completed_at - (started_at or completed_at)
+                ).total_seconds()
+                * 1000
+            ),
         )
         self.session.flush()
         return record

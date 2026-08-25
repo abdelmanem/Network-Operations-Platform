@@ -4,14 +4,26 @@ import {
   cancelDiscoveryApiJob,
   discoveryJobsErrorTitle,
   listDiscoveryApiJobs,
+  resolveDiscoveryApiJobCancellation,
 } from '../api/discovery'
 import type { DiscoveryApiJobResponse } from '../types/api'
+import './JobsPage.css'
 
 const PAGE_SIZE = 20
 const activeStates = new Set(['queued', 'running'])
 
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : '—'
+}
+
+function hasActiveWorkerLease(job: DiscoveryApiJobResponse): boolean {
+  if (job.has_active_lease !== undefined) {
+    return Boolean(job.has_active_lease)
+  }
+  if (!job.execution_owner || !job.lease_expires_at) {
+    return false
+  }
+  return new Date(job.lease_expires_at).getTime() > Date.now()
 }
 
 export function JobsPage() {
@@ -22,6 +34,7 @@ export function JobsPage() {
   const [total, setTotal] = useState(0)
   const [hasNext, setHasNext] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
   const mountedRef = useRef(false)
 
   const loadJobs = useCallback((requestedPage: number) => {
@@ -85,17 +98,48 @@ export function JobsPage() {
     }
   }
 
+  const resolveCancellation = async (job: DiscoveryApiJobResponse) => {
+    const confirmed = window.confirm(
+      'Resolving cancellation changes the durable job state to cancelled immediately and does not terminate active network I/O or background processes. Are you sure you want to resolve cancellation for this job?',
+    )
+    if (!confirmed) return
+    setResolvingId(job.job_id)
+    setError(null)
+    try {
+      await resolveDiscoveryApiJobCancellation(job.job_id)
+      await loadJobs(page)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to resolve discovery job cancellation.',
+      )
+      setStatus('error')
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
   return (
-    <div className="page">
+    <div className="page jobs-page">
       <div className="dashboard-header">
         <div>
-          <h2>Discovery Jobs</h2>
+          <h2>
+            Discovery Jobs
+            {hasActiveJobs ? (
+              <span className="jobs-live-indicator">Live</span>
+            ) : null}
+          </h2>
           <p className="muted">
             Monitor durable discovery executions and inspect their captured
             results.
           </p>
         </div>
-        <button type="button" onClick={() => void loadJobs(page)}>
+        <button
+          type="button"
+          className="btn btn-outline btn-refresh"
+          onClick={() => void loadJobs(page)}
+        >
           Refresh
         </button>
       </div>
@@ -110,7 +154,11 @@ export function JobsPage() {
         <div className="error-state" role="alert">
           <h3>{discoveryJobsErrorTitle(error)}</h3>
           <p>{error}</p>
-          <button type="button" onClick={() => void loadJobs(page)}>
+          <button
+            type="button"
+            className="btn btn-outline btn-compact"
+            onClick={() => void loadJobs(page)}
+          >
             Retry
           </button>
         </div>
@@ -163,7 +211,12 @@ export function JobsPage() {
                     <td>{formatDate(job.created_at)}</td>
                     <td>{formatDate(job.started_at)}</td>
                     <td>{formatDate(job.finished_at)}</td>
-                    <td>{job.error_message || job.error_code || '—'}</td>
+                    <td
+                      className="jobs-failure-cell"
+                      title={job.error_message || job.error_code || undefined}
+                    >
+                      {job.error_message || job.error_code || '—'}
+                    </td>
                     <td>
                       <Link to={`/discovery?job_id=${job.job_id}`}>
                         View details
@@ -171,21 +224,42 @@ export function JobsPage() {
                     </td>
                     <td>
                       {activeStates.has(job.status) ? (
-                        <button
-                          type="button"
-                          disabled={
-                            cancellingId === job.job_id ||
-                            job.cancellation_requested_at !== null
-                          }
-                          onClick={() => void cancelJob(job)}
-                        >
-                          {cancellingId === job.job_id
-                            ? 'Cancelling…'
-                            : job.cancellation_requested_at
-                              ? 'Cancellation requested'
+                        job.cancellation_requested_at !== null ? (
+                          hasActiveWorkerLease(job) ? (
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-compact"
+                              disabled
+                            >
+                              Cancellation requested…
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-warning btn-compact"
+                              disabled={resolvingId === job.job_id}
+                              onClick={() => void resolveCancellation(job)}
+                            >
+                              {resolvingId === job.job_id
+                                ? 'Resolving…'
+                                : 'Resolve cancellation'}
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-compact"
+                            disabled={cancellingId === job.job_id}
+                            onClick={() => void cancelJob(job)}
+                          >
+                            {cancellingId === job.job_id
+                              ? 'Cancelling…'
                               : 'Cancel'}
-                        </button>
-                      ) : '—'}
+                          </button>
+                        )
+                      ) : (
+                        '—'
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -195,6 +269,7 @@ export function JobsPage() {
           <div className="jobs-pagination">
             <button
               type="button"
+              className="btn btn-outline btn-compact"
               disabled={page === 1}
               onClick={() => void loadJobs(page - 1)}
             >
@@ -203,6 +278,7 @@ export function JobsPage() {
             <span>Page {page}</span>
             <button
               type="button"
+              className="btn btn-outline btn-compact"
               disabled={!hasNext}
               onClick={() => void loadJobs(page + 1)}
             >

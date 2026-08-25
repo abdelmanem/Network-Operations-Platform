@@ -207,6 +207,10 @@ export interface DiscoveryApiJobResponse {
   cancellation_requested_at: string | null
   cancellation_requested_by: string | null
   cancellation_reason: string | null
+  execution_owner?: string | null
+  lease_expires_at?: string | null
+  last_heartbeat_at?: string | null
+  has_active_lease?: boolean
 }
 
 export interface DiscoveryJobListResponse {

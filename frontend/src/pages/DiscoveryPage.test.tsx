@@ -475,5 +475,126 @@ describe('DiscoveryPage', () => {
       { timeout: 3000 },
     )
     expect(screen.getByText('catalyst-2960')).toBeInTheDocument()
+    expect(screen.getByText('1 device discovered')).toBeInTheDocument()
+  })
+
+  it('displays accurate summary for CIDR discovery with succeeded and unavailable addresses', async () => {
+    listTargets.mockResolvedValue([
+      {
+        target_id: 'target-cidr-1',
+        tenant_id: 'default',
+        identifier: 'Cisco SW 40',
+        address: '192.168.40.0/24',
+        scope_type: 'cidr_network',
+        scope_end: null,
+        scope_cidr: '192.168.40.0/24',
+        credential_profile_id: 'profile-cisco-ssh',
+        vendor: null,
+        platform_hint: 'cisco-ios',
+        preferred_transport: 'netmiko',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    listCredentialProfiles.mockResolvedValue([])
+    createJob.mockResolvedValue({
+      job_id: 'job-cidr-1',
+      tenant_id: 'default',
+      target_id: 'target-cidr-1',
+      discovery_run_id: 'run-cidr-1',
+      status: 'running',
+      selected_transport: null,
+      selected_platform: null,
+      attempts: 0,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-08-19T10:00:00Z',
+      queued_at: '2026-08-19T10:00:00Z',
+      started_at: '2026-08-19T10:00:00Z',
+      finished_at: null,
+      timeout_seconds: 120,
+      correlation_id: null,
+    })
+    getJob.mockResolvedValue({
+      job_id: 'job-cidr-1',
+      tenant_id: 'default',
+      target_id: 'target-cidr-1',
+      discovery_run_id: 'run-cidr-1',
+      status: 'succeeded',
+      selected_transport: 'netmiko',
+      selected_platform: 'catalyst-2960',
+      attempts: 1,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-08-19T10:00:00Z',
+      queued_at: '2026-08-19T10:00:00Z',
+      started_at: '2026-08-19T10:00:00Z',
+      finished_at: '2026-08-19T10:00:25Z',
+      timeout_seconds: 120,
+      correlation_id: null,
+    })
+
+    const mockDeviceResults = [
+      ...Array.from({ length: 9 }, (_, i) => ({
+        result_id: `res-succ-${i}`,
+        address: `192.168.40.${i + 1}`,
+        hostname: `Switch-${i + 1}`,
+        vendor: 'Cisco',
+        model: 'WS-C2960X-24PS-L',
+        platform: 'ios',
+        state: 'succeeded',
+        selected_transport: 'netmiko',
+        failure_code: null,
+        failure_message: null,
+        started_at: '2026-08-19T10:00:00Z',
+        completed_at: '2026-08-19T10:00:01Z',
+        correlation_id: null,
+      })),
+      ...Array.from({ length: 245 }, (_, i) => ({
+        result_id: `res-fail-${i}`,
+        address: `192.168.40.${i + 10}`,
+        hostname: null,
+        vendor: null,
+        model: null,
+        platform: null,
+        state: 'failed',
+        selected_transport: null,
+        failure_code: 'TRANSPORT_UNAVAILABLE',
+        failure_message: 'TCP connection to device failed.',
+        started_at: '2026-08-19T10:00:00Z',
+        completed_at: '2026-08-19T10:00:01Z',
+        correlation_id: null,
+      })),
+    ]
+
+    getDeviceResults.mockResolvedValue(mockDeviceResults)
+    getEvidence.mockResolvedValue([])
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: /start discovery/i })[1],
+      ).toBeEnabled()
+    })
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /start discovery/i })[1],
+    )
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(
+            '9 devices discovered (254 addresses scanned, 245 unavailable)',
+          ),
+        ).toBeInTheDocument()
+      },
+      { timeout: 3000 },
+    )
   })
 })

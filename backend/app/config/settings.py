@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     netbox_page_size: int = 100
     netbox_retry_max_attempts: int = 4
     netbox_retry_base_delay_seconds: float = 0.5
+    discovery_job_lease_seconds: float = Field(default=120.0)
+    discovery_job_heartbeat_interval_seconds: float = Field(default=30.0)
+    discovery_job_poll_interval_seconds: float = Field(default=1.0)
+    discovery_job_claim_limit: int = Field(default=8)
+    discovery_job_worker_enabled: bool = Field(default=True)
     netbox_ca_cert: str = Field(
         default="",
         validation_alias="NETBOX_CA_CERT",
