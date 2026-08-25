@@ -12,10 +12,12 @@ const {
   getEvidence,
   createCredentialProfile,
   testCredentialProfile,
+  updateTarget,
 } = vi.hoisted(() => ({
   listTargets: vi.fn(),
   listCredentialProfiles: vi.fn(),
   createTarget: vi.fn(),
+  updateTarget: vi.fn(),
   createJob: vi.fn(),
   getJob: vi.fn(),
   getDeviceResults: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('../api/discovery', () => ({
   listDiscoveryTargets: listTargets,
   listDiscoveryCredentialProfiles: listCredentialProfiles,
   createDiscoveryTarget: createTarget,
+  updateDiscoveryTarget: updateTarget,
   createDiscoveryApiJob: createJob,
   getDiscoveryApiJob: getJob,
   getDiscoveryDeviceResults: getDeviceResults,
@@ -49,6 +52,7 @@ describe('DiscoveryPage', () => {
     getEvidence.mockReset()
     createCredentialProfile.mockReset()
     testCredentialProfile.mockReset()
+    updateTarget.mockReset()
   })
 
   it('renders a credential-profile empty state and allows creation from the discovery workflow', async () => {
@@ -597,4 +601,98 @@ describe('DiscoveryPage', () => {
       { timeout: 3000 },
     )
   })
+
+  it('allows selecting another credential profile for an existing target and saving changes', async () => {
+    listTargets.mockResolvedValue([
+      {
+        target_id: 'target-cisco-1',
+        tenant_id: 'default',
+        identifier: 'cisco',
+        address: '192.168.20.0/24',
+        vendor: 'cisco',
+        scope_type: 'cidr_network',
+        scope_end: null,
+        scope_cidr: '192.168.20.0/24',
+        credential_profile_id: 'profile-1',
+        platform_hint: 'cisco-ios',
+        preferred_transport: 'netmiko',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    listCredentialProfiles.mockResolvedValue([
+      {
+        profile_id: 'profile-1',
+        tenant_id: 'default',
+        name: 'Cisco Profile 1',
+        description: 'Profile 1',
+        transport_types: ['ssh'],
+        provider_reference: 'ref-1',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+      {
+        profile_id: 'profile-2',
+        tenant_id: 'default',
+        name: 'Cisco Profile 2',
+        description: 'Profile 2',
+        transport_types: ['ssh'],
+        provider_reference: 'ref-2',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    updateTarget.mockResolvedValue({
+      target_id: 'target-cisco-1',
+      tenant_id: 'default',
+      identifier: 'cisco',
+      address: '192.168.20.0/24',
+      vendor: 'cisco',
+      scope_type: 'cidr_network',
+      scope_end: null,
+      scope_cidr: '192.168.20.0/24',
+      credential_profile_id: 'profile-2',
+      platform_hint: 'cisco-ios',
+      preferred_transport: 'netmiko',
+      enabled: true,
+      created_at: '2026-08-19T10:00:00Z',
+      updated_at: '2026-08-19T10:05:00Z',
+    })
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Cisco Profile 1')).toBeInTheDocument()
+    })
+
+    // Change credential profile to Profile 2
+    const selector = screen.getByLabelText(/credential profile/i)
+    fireEvent.change(selector, { target: { value: 'profile-2' } })
+
+    // Save Changes button should appear
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /save changes/i }),
+      ).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => {
+      expect(updateTarget).toHaveBeenCalledWith('target-cisco-1', {
+        credential_profile_id: 'profile-2',
+      })
+      expect(
+        screen.getByText(/credential profile updated successfully/i),
+      ).toBeInTheDocument()
+    })
+  })
 })
+

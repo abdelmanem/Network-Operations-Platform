@@ -13,6 +13,7 @@ import type {
   DiscoveryRunListResponse,
   DiscoveryTargetRequest,
   DiscoveryTargetResponse,
+  DiscoveryTargetUpdateRequest,
 } from '../types/api'
 import { api, normalizeApiError } from './client'
 
@@ -78,6 +79,22 @@ export async function createDiscoveryTarget(
     throw new Error(normalizeApiError(error))
   }
 }
+
+export async function updateDiscoveryTarget(
+  targetId: string,
+  payload: DiscoveryTargetUpdateRequest,
+): Promise<DiscoveryTargetResponse> {
+  try {
+    const response = await api.patch<DiscoveryTargetResponse>(
+      `/api/v1/discovery/targets/${targetId}`,
+      payload,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
 
 export async function listDiscoveryCredentialProfiles(): Promise<
   CredentialProfileResponse[]

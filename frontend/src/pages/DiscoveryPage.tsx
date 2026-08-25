@@ -10,6 +10,7 @@ import {
   listDiscoveryCredentialProfiles,
   listDiscoveryTargets,
   testDiscoveryCredentialProfile,
+  updateDiscoveryTarget,
 } from '../api/discovery'
 import type {
   CredentialProfileResponse,
@@ -547,21 +548,47 @@ function SelectedTargetPanel({
   profiles,
   profileTestResult,
   testingCredential,
+  savingTargetProfile,
   onTestCredential,
   onManageProfiles,
+  onSaveTargetProfile,
 }: {
   target: DiscoveryTargetResponse | null
   profile: ProfileWithDetails | null
   profiles: ProfileWithDetails[]
   profileTestResult: CredentialProfileTestResponse | null
   testingCredential: boolean
+  savingTargetProfile?: boolean
   onTestCredential: () => void
   onManageProfiles: () => void
+  onSaveTargetProfile?: (targetId: string, profileId: string) => Promise<void>
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('')
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
+
+  useEffect(() => {
+    setSelectedProfileId(target?.credential_profile_id || profile?.profile_id || '')
+    setSaveError(null)
+    setSaveSuccess(null)
+  }, [target?.target_id, target?.credential_profile_id, profile?.profile_id])
+
+  const activeProfile = useMemo(() => {
+    return (
+      profiles.find((p) => p.profile_id === selectedProfileId) || profile || null
+    )
+  }, [profiles, selectedProfileId, profile])
+
+  const hasUnsavedChanges = Boolean(
+    target &&
+      selectedProfileId &&
+      selectedProfileId !== (target.credential_profile_id || '')
+  )
+
   const transport =
-    profile?.transport_types[0] || target?.preferred_transport || 'ssh'
-  const secretStatus = getSecretStatus(profile, profileTestResult)
+    activeProfile?.transport_types[0] || target?.preferred_transport || 'ssh'
+  const secretStatus = getSecretStatus(activeProfile, profileTestResult)
 
   if (!target) {
     const fallbackProfile = profiles[0] || null
@@ -730,7 +757,7 @@ function SelectedTargetPanel({
         </div>
         <div className="discovery-fact">
           <span>Credential</span>
-          <strong>{profile?.name || 'Not configured'}</strong>
+          <strong>{activeProfile?.name || 'Not configured'}</strong>
         </div>
       </div>
 
@@ -755,8 +782,13 @@ function SelectedTargetPanel({
                 Credential profile
                 <select
                   id="selected-credential-profile"
-                  value={profile?.profile_id || ''}
-                  disabled
+                  value={selectedProfileId}
+                  onChange={(e) => {
+                    setSelectedProfileId(e.target.value)
+                    setSaveError(null)
+                    setSaveSuccess(null)
+                  }}
+                  disabled={savingTargetProfile}
                 >
                   <option value="">Select credential profile</option>
                   {profiles.map((item) => (
@@ -768,12 +800,90 @@ function SelectedTargetPanel({
               </label>
             </div>
 
-            {profile ? (
+            {hasUnsavedChanges ? (
+              <div
+                className="discovery-target-profile-save-banner"
+                style={{
+                  marginTop: '0.75rem',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'center',
+                }}
+              >
+                <button
+                  type="button"
+                  className="discovery-btn discovery-btn-primary discovery-btn-compact"
+                  disabled={savingTargetProfile || !selectedProfileId}
+                  onClick={async () => {
+                    if (!target || !selectedProfileId || !onSaveTargetProfile)
+                      return
+                    setSaveError(null)
+                    setSaveSuccess(null)
+                    try {
+                      await onSaveTargetProfile(
+                        target.target_id,
+                        selectedProfileId,
+                      )
+                      setSaveSuccess('Credential profile updated successfully.')
+                    } catch (err) {
+                      setSaveError(
+                        err instanceof Error
+                          ? err.message
+                          : 'Failed to update credential profile.',
+                      )
+                    }
+                  }}
+                >
+                  {savingTargetProfile ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  className="discovery-btn discovery-btn-ghost discovery-btn-compact"
+                  disabled={savingTargetProfile}
+                  onClick={() => {
+                    setSelectedProfileId(target?.credential_profile_id || '')
+                    setSaveError(null)
+                    setSaveSuccess(null)
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : null}
+
+            {saveSuccess ? (
+              <div
+                className="discovery-inline-success"
+                style={{
+                  color: 'var(--success-color, #10b981)',
+                  fontSize: '0.85rem',
+                  marginTop: '0.25rem',
+                }}
+              >
+                {saveSuccess}
+              </div>
+            ) : null}
+
+            {saveError ? (
+              <div
+                className="discovery-inline-error"
+                style={{
+                  color: 'var(--error-color, #ef4444)',
+                  fontSize: '0.85rem',
+                  marginTop: '0.25rem',
+                }}
+              >
+                {saveError}
+              </div>
+            ) : null}
+
+            {activeProfile ? (
               <>
                 <div className="discovery-credential-details">
                   <div className="discovery-credential-detail">
                     <span>Username</span>
-                    <strong>{profile.username || '—'}</strong>
+                    <strong>{activeProfile.username || '—'}</strong>
                   </div>
                   <div className="discovery-credential-detail">
                     <span>Transport</span>
@@ -787,7 +897,7 @@ function SelectedTargetPanel({
                   </div>
                 </div>
 
-                {profile.provider_reference ? (
+                {activeProfile.provider_reference ? (
                   <details
                     className="discovery-secret-advanced"
                     open={showAdvanced}
@@ -803,7 +913,7 @@ function SelectedTargetPanel({
                           </div>
                           <div className="discovery-credential-detail">
                             <span>Provider reference</span>
-                            <code>{profile.provider_reference}</code>
+                            <code>{activeProfile.provider_reference}</code>
                           </div>
                           <div className="discovery-credential-detail">
                             <span>Secret value</span>
@@ -851,6 +961,7 @@ function SelectedTargetPanel({
           <CredentialResult result={profileTestResult} />
         ) : null}
       </div>
+
 
       <div className="discovery-plan">
         <h3>Discovery plan</h3>
@@ -1642,6 +1753,8 @@ export function DiscoveryPage() {
     provider_reference: '',
   })
 
+  const [savingTargetProfile, setSavingTargetProfile] = useState(false)
+
   const selectedTarget = useMemo(
     () =>
       targets.find((target) => target.target_id === selectedTargetId) || null,
@@ -1654,6 +1767,22 @@ export function DiscoveryPage() {
 
     return profiles.find((profile) => profile.profile_id === profileId) || null
   }, [profiles, selectedTarget, targetForm.credential_profile_id])
+
+  async function handleSaveTargetProfile(targetId: string, profileId: string) {
+    setSavingTargetProfile(true)
+    setError(null)
+    try {
+      const updated = await updateDiscoveryTarget(targetId, {
+        credential_profile_id: profileId,
+      })
+      setTargets((current) =>
+        current.map((t) => (t.target_id === targetId ? updated : t))
+      )
+    } finally {
+      setSavingTargetProfile(false)
+    }
+  }
+
 
   async function loadTargets() {
     setLoading(true)
@@ -2037,10 +2166,12 @@ export function DiscoveryPage() {
           profiles={profiles}
           profileTestResult={profileTestResult}
           testingCredential={testingCredential}
+          savingTargetProfile={savingTargetProfile}
           onTestCredential={() =>
             void handleTestSelectedProfile(selectedProfile?.profile_id)
           }
           onManageProfiles={() => setShowProfileComposer(true)}
+          onSaveTargetProfile={handleSaveTargetProfile}
         />
       </div>
 

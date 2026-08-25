@@ -106,6 +106,55 @@ class DiscoveryTargetRequest(BaseModel):
         return list(dict.fromkeys(value))
 
 
+class DiscoveryTargetUpdateRequest(BaseModel):
+    """Validated target update contract."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    credential_profile_id: str | None = Field(default=None, max_length=255)
+    preferred_transport: str | None = Field(default=None, max_length=64)
+    platform_hint: str | None = Field(default=None, max_length=128)
+    enabled: bool | None = None
+
+    @field_validator("platform_hint")
+    @classmethod
+    def validate_platform_hint(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+        supported = {
+            "cisco-ios",
+            "cisco-iosxe",
+            "ios",
+            "iosxe",
+            "cisco-ios-xe",
+            "cisco-ios-x",
+        }
+        if normalized not in supported:
+            raise ValueError("Unsupported discovery platform.")
+        return value
+
+    @field_validator("preferred_transport")
+    @classmethod
+    def validate_transport(cls, value: str | None) -> str | None:
+        supported = {
+            "ssh",
+            "snmp",
+            "telnet",
+            "icmp",
+            "http",
+            "https",
+            "cisco-api",
+            "netmiko",
+            "paramiko",
+            "pysnmp",
+            "httpx",
+        }
+        if value is not None and value not in supported:
+            raise ValueError("Unsupported discovery transport.")
+        return value
+
+
 class DiscoveryTargetResponse(BaseModel):
     """Persisted target metadata returned to the operator UI."""
 
@@ -267,6 +316,8 @@ class DiscoveryJobResponse(BaseModel):
     job_id: UUID
     tenant_id: str
     target_id: UUID
+    target_identifier: str | None = None
+    target_address: str | None = None
     discovery_run_id: UUID | None = None
     status: DiscoveryJobStatus
     selected_transport: str | None = None
@@ -292,7 +343,7 @@ class DiscoveryJobResponse(BaseModel):
 class DiscoveryJobListResponse(PaginatedResponse[DiscoveryJobResponse]):
     """Tenant-scoped page of durable discovery jobs."""
 
-    pass
+    total_pages: int = 1
 
 
 class DiscoveryEvidenceResponse(BaseModel):

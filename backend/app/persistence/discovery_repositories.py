@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import String, cast as sql_cast, func, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -153,6 +153,23 @@ class DiscoveryTargetRepository:
             .order_by(DiscoveryTargetRecord.created_at.desc())
         )
         return tuple(self.session.scalars(statement).all())
+
+    def update(
+        self,
+        *,
+        tenant_id: str,
+        target_id: UUID,
+        **changes: Any,
+    ) -> DiscoveryTargetRecord:
+        record = self.get(tenant_id=tenant_id, target_id=target_id)
+        if record is None:
+            raise DiscoveryResourceNotFoundError("Discovery target was not found.")
+        for key, value in changes.items():
+            if value is not None:
+                setattr(record, key, value)
+        self.session.flush()
+        return record
+
 
 
 class CredentialProfileRepository:

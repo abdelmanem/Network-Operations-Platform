@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -38,6 +38,7 @@ from backend.app.persistence.discovery_repositories import (
     DiscoveryEvidenceRepository,
     DiscoveryJobRepository,
     DiscoveryPersistenceError,
+    DiscoveryResourceNotFoundError,
     DiscoveryTargetRepository,
     InvalidDiscoveryTransitionError,
 )
@@ -62,6 +63,7 @@ from backend.app.schemas.discovery import (
     DiscoveryJobResponse,
     DiscoveryTargetRequest,
     DiscoveryTargetResponse,
+    DiscoveryTargetUpdateRequest,
     DiscoveryTransportAttemptResponse,
 )
 
@@ -127,6 +129,102 @@ def list_targets(
         _target_response(record)
         for record in DiscoveryTargetRepository(db_session).list(tenant_id=tenant_id)
     ]
+
+
+@router.patch(
+    "/targets/{target_id}",
+    response_model=DiscoveryTargetResponse,
+    summary="Update a discovery target",
+)
+def update_target(
+    target_id: UUID,
+    payload: DiscoveryTargetUpdateRequest,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:target:write"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> DiscoveryTargetResponse:
+    target_repo = DiscoveryTargetRepository(db_session)
+    existing_target = target_repo.get(tenant_id=tenant_id, target_id=target_id)
+    if existing_target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Discovery target was not found.",
+        )
+
+    changes: dict[str, Any] = {}
+    if payload.enabled is not None:
+        changes["enabled"] = payload.enabled
+    if payload.platform_hint is not None:
+        changes["platform_hint"] = payload.platform_hint
+    if payload.preferred_transport is not None:
+        changes["preferred_transport"] = payload.preferred_transport
+
+    if payload.credential_profile_id is not None:
+        try:
+            profile_uuid = UUID(payload.credential_profile_id)
+        except ValueError:
+            profile_uuid = None
+
+        profile = None
+        if profile_uuid is not None:
+            profile = CredentialProfileRepository(db_session).get(
+                tenant_id=tenant_id,
+                profile_id=profile_uuid,
+            )
+        if profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Credential profile was not found.",
+            )
+
+        effective_transport = (
+            payload.preferred_transport
+            or existing_target.preferred_transport
+            or "ssh"
+        )
+        normalized_transport = effective_transport.lower()
+        if normalized_transport in {"netmiko", "paramiko"}:
+            normalized_transport = "ssh"
+        elif normalized_transport == "pysnmp":
+            normalized_transport = "snmp"
+        elif normalized_transport == "httpx":
+            normalized_transport = "http"
+
+        profile_transports = {t.lower() for t in profile.transport_types}
+        if (
+            normalized_transport not in profile_transports
+            and effective_transport.lower() not in profile_transports
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Credential profile does not support target transport '{effective_transport}'.",
+            )
+
+        changes["credential_profile_id"] = str(profile.id)
+        changes["credential_reference"] = profile.provider_reference or str(profile.id)
+
+    try:
+        updated_record = target_repo.update(
+            tenant_id=tenant_id,
+            target_id=target_id,
+            **changes,
+        )
+        db_session.commit()
+    except DiscoveryResourceNotFoundError as exc:
+        db_session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except DiscoveryPersistenceError as exc:
+        db_session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return _target_response(updated_record)
+
 
 
 @router.get(

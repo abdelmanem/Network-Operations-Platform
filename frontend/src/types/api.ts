@@ -141,6 +141,14 @@ export interface DiscoveryTargetResponse {
   updated_at: string
 }
 
+export interface DiscoveryTargetUpdateRequest {
+  credential_profile_id?: string | null
+  preferred_transport?: string | null
+  platform_hint?: string | null
+  enabled?: boolean | null
+}
+
+
 export interface CredentialProfileRequest {
   name: string
   description?: string | null
