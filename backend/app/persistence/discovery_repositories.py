@@ -370,22 +370,139 @@ class DiscoveryJobRepository:
         return tuple(self.session.scalars(statement).all())
 
     def list_page(
-        self, *, tenant_id: str, page: int, page_size: int
+        self,
+        *,
+        tenant_id: str,
+        page: int = 1,
+        page_size: int = 25,
+        q: str | None = None,
+        status: str | None = None,
+        target_id: UUID | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort: str | None = None,
+        order: str | None = None,
     ) -> tuple[tuple[DiscoveryJobRecord, ...], int]:
-        """Return one ordered page and the tenant-scoped total."""
+        """Return one filtered/sorted page and the tenant-scoped total."""
 
-        filters = (DiscoveryJobRecord.tenant_id == tenant_id,)
-        total = self.session.scalar(
-            select(func.count()).select_from(DiscoveryJobRecord).where(*filters)
-        )
-        statement = (
-            select(DiscoveryJobRecord)
+        filters = [DiscoveryJobRecord.tenant_id == tenant_id]
+
+        if status and status.strip().lower() not in {"", "all"}:
+            filters.append(DiscoveryJobRecord.state == status.strip().lower())
+
+        if target_id is not None:
+            filters.append(DiscoveryJobRecord.target_id == target_id)
+
+        if date_from is not None:
+            filters.append(DiscoveryJobRecord.requested_at >= date_from)
+
+        if date_to is not None:
+            filters.append(DiscoveryJobRecord.requested_at <= date_to)
+
+        if q and q.strip():
+            clean_q = q.strip()
+            term = f"%{clean_q}%"
+            q_conditions = [
+                sql_cast(DiscoveryJobRecord.id, String).ilike(term),
+                sql_cast(DiscoveryJobRecord.run_id, String).ilike(term),
+                sql_cast(DiscoveryJobRecord.target_id, String).ilike(term),
+                sql_cast(DiscoveryJobRecord.execution_owner, String).ilike(term),
+                DiscoveryJobRecord.failure_code.ilike(term),
+                DiscoveryJobRecord.failure_message.ilike(term),
+                DiscoveryJobRecord.state.ilike(term),
+                DiscoveryTargetRecord.identifier.ilike(term),
+                DiscoveryTargetRecord.address.ilike(term),
+            ]
+            filters.append(or_(*q_conditions))
+
+        normalized_sort = (sort or "newest").strip().lower()
+        normalized_order = (order or "").strip().lower()
+
+        bind = self.session.get_bind()
+        is_sqlite = bind.dialect.name == "sqlite"
+
+        if normalized_sort in {"newest", "requested_at", "created_at"}:
+            direction = normalized_order or "desc"
+            order_clause = (
+                DiscoveryJobRecord.requested_at.asc()
+                if direction == "asc"
+                else DiscoveryJobRecord.requested_at.desc()
+            )
+        elif normalized_sort in {"oldest"}:
+            order_clause = DiscoveryJobRecord.requested_at.asc()
+        elif normalized_sort in {"started_at", "recently_started"}:
+            direction = normalized_order or "desc"
+            col = (
+                DiscoveryJobRecord.started_at.asc()
+                if direction == "asc"
+                else DiscoveryJobRecord.started_at.desc()
+            )
+            order_clause = col.nulls_last()
+        elif normalized_sort in {"completed_at", "finished_at", "recently_completed"}:
+            direction = normalized_order or "desc"
+            col = (
+                DiscoveryJobRecord.completed_at.asc()
+                if direction == "asc"
+                else DiscoveryJobRecord.completed_at.desc()
+            )
+            order_clause = col.nulls_last()
+        elif normalized_sort in {"duration", "longest_running"}:
+            direction = normalized_order or "desc"
+            if is_sqlite:
+                now_expr = func.datetime("now")
+                duration_expr = (
+                    func.julianday(
+                        func.coalesce(DiscoveryJobRecord.completed_at, now_expr)
+                    )
+                    - func.julianday(DiscoveryJobRecord.started_at)
+                )
+            else:
+                duration_expr = (
+                    func.coalesce(DiscoveryJobRecord.completed_at, func.now())
+                    - DiscoveryJobRecord.started_at
+                )
+            col = duration_expr.asc() if direction == "asc" else duration_expr.desc()
+            order_clause = col.nulls_last()
+        elif normalized_sort in {"target", "target_identifier", "target_name"}:
+            direction = normalized_order or "asc"
+            order_clause = (
+                DiscoveryTargetRecord.identifier.asc()
+                if direction == "asc"
+                else DiscoveryTargetRecord.identifier.desc()
+            )
+        elif normalized_sort in {"status", "state"}:
+            direction = normalized_order or "asc"
+            order_clause = (
+                DiscoveryJobRecord.state.asc()
+                if direction == "asc"
+                else DiscoveryJobRecord.state.desc()
+            )
+        else:
+            raise ValueError(f"Unsupported sort field: {sort}")
+
+        count_stmt = (
+            select(func.count())
+            .select_from(DiscoveryJobRecord)
+            .outerjoin(
+                DiscoveryTargetRecord,
+                DiscoveryJobRecord.target_id == DiscoveryTargetRecord.id,
+            )
             .where(*filters)
-            .order_by(DiscoveryJobRecord.requested_at.desc())
+        )
+        total = self.session.scalar(count_stmt) or 0
+
+        select_stmt = (
+            select(DiscoveryJobRecord)
+            .outerjoin(
+                DiscoveryTargetRecord,
+                DiscoveryJobRecord.target_id == DiscoveryTargetRecord.id,
+            )
+            .where(*filters)
+            .order_by(order_clause)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        return tuple(self.session.scalars(statement).all()), int(total or 0)
+        return tuple(self.session.scalars(select_stmt).all()), int(total)
 
     def claim(
         self,

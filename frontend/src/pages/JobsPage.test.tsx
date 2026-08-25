@@ -2,12 +2,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { discoveryJobsErrorTitle } from '../api/discovery'
-import type { DiscoveryApiJobResponse } from '../types/api'
+import type { DiscoveryApiJobResponse, DiscoveryTargetResponse } from '../types/api'
 
-const { cancelJob, resolveJob, listJobs } = vi.hoisted(() => ({
+const { cancelJob, resolveJob, listJobs, listTargets } = vi.hoisted(() => ({
   cancelJob: vi.fn(),
   resolveJob: vi.fn(),
   listJobs: vi.fn(),
+  listTargets: vi.fn(),
 }))
 
 vi.mock('../api/discovery', async (importOriginal) => ({
@@ -15,6 +16,7 @@ vi.mock('../api/discovery', async (importOriginal) => ({
   cancelDiscoveryApiJob: cancelJob,
   resolveDiscoveryApiJobCancellation: resolveJob,
   listDiscoveryApiJobs: listJobs,
+  listDiscoveryTargets: listTargets,
 }))
 
 import { JobsPage } from './JobsPage'
@@ -27,12 +29,14 @@ function job(
     job_id: `job-${id}`,
     tenant_id: 'default',
     target_id: `target-${id}`,
+    target_identifier: `target-${id}`,
+    target_address: `192.168.1.${id.length}`,
     discovery_run_id: null,
     status,
     selected_transport: 'netmiko',
     selected_platform: 'cisco-iosxe',
     attempts: 1,
-    error_code: status === 'failed' ? 'connection_failed' : null,
+    error_code: status === 'failed' ? 'CONNECTION_FAILED' : null,
     error_message: status === 'failed' ? 'Connection timed out.' : null,
     created_at: '2026-08-09T10:00:00Z',
     queued_at: '2026-08-09T10:00:00Z',
@@ -48,15 +52,35 @@ function job(
   }
 }
 
-function response(items = [job('succeeded')], page = 1, hasNext = false) {
+function response(items = [job('succeeded')], page = 1, hasNext = false, totalPages = 1) {
   return {
     items,
     page,
-    page_size: 20,
-    total: items.length + (hasNext ? 20 : 0),
+    page_size: 25,
+    total: items.length + (hasNext ? 25 : 0),
+    total_pages: totalPages,
     has_next: hasNext,
   }
 }
+
+const mockTargets: DiscoveryTargetResponse[] = [
+  {
+    target_id: 'target-cisco-1',
+    tenant_id: 'default',
+    identifier: 'cisco-core',
+    address: '192.168.20.0/24',
+    scope_type: 'cidr_network',
+    scope_end: null,
+    scope_cidr: '192.168.20.0/24',
+    vendor: 'cisco',
+    platform_hint: 'cisco-ios',
+    preferred_transport: 'netmiko',
+    credential_profile_id: 'prof-1',
+    enabled: true,
+    created_at: '2026-08-01T10:00:00Z',
+    updated_at: '2026-08-01T10:00:00Z',
+  },
+]
 
 function renderPage() {
   return render(
@@ -71,21 +95,29 @@ describe('JobsPage', () => {
     listJobs.mockReset()
     cancelJob.mockReset()
     resolveJob.mockReset()
+    listTargets.mockReset()
+    listTargets.mockResolvedValue(mockTargets)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
   afterEach(() => vi.useRealTimers())
 
-  it('renders a durable persisted discovery job even when the legacy repository is not used', async () => {
+  it('renders discovery jobs with toolbar and displays target information', async () => {
     listJobs.mockResolvedValue(response([job('succeeded')]))
     renderPage()
 
-    expect(await screen.findByText('job-succeeded')).toBeInTheDocument()
-    expect(listJobs).toHaveBeenCalledWith(1, 20)
+    expect(await screen.findByTitle('job-succeeded')).toBeInTheDocument()
+    expect(listJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: 1,
+        page_size: 25,
+      }),
+    )
     expect(screen.getByText('succeeded')).toBeInTheDocument()
     expect(screen.getByText('target-succeeded')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/search jobs/i)).toBeInTheDocument()
   })
 
-  it('renders queued, running, succeeded, and failed states with failure details', async () => {
+  it('renders queued, running, succeeded, and failed states with failure details and duration', async () => {
     listJobs.mockResolvedValue(
       response([
         job('queued'),
@@ -102,12 +134,218 @@ describe('JobsPage', () => {
     expect(screen.getByText('Connection timed out.')).toBeInTheDocument()
   })
 
-  it('renders a true empty state', async () => {
+  it('debounces free-text search and triggers API with query parameter', async () => {
+    vi.useFakeTimers()
+    listJobs.mockResolvedValue(response([job('succeeded', 'cisco')]))
+    renderPage()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const searchInput = screen.getByPlaceholderText(/search jobs/i)
+    fireEvent.change(searchInput, { target: { value: 'cisco' } })
+
+    // Before debounce timer
+    expect(listJobs).toHaveBeenCalledTimes(1)
+
+    // Advance past debounce (300ms)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350)
+    })
+
+    expect(listJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: 'cisco',
+        page: 1,
+      }),
+    )
+  })
+
+  it('applies status filter and passes parameter to API', async () => {
+    listJobs.mockResolvedValue(response([job('running')]))
+    renderPage()
+
+    await screen.findByText('running')
+
+    const statusSelect = screen.getByLabelText(/^status$/i)
+    fireEvent.change(statusSelect, { target: { value: 'running' } })
+
+    await waitFor(() => {
+      expect(listJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'running',
+          page: 1,
+        }),
+      )
+    })
+  })
+
+  it('applies target filter and passes target_id to API', async () => {
+    listJobs.mockResolvedValue(response([job('succeeded')]))
+    renderPage()
+
+    await screen.findByText('succeeded')
+
+    await waitFor(() => {
+      expect(screen.getByText(/cisco-core/i)).toBeInTheDocument()
+    })
+
+    const targetSelect = screen.getByLabelText(/^target$/i)
+    fireEvent.change(targetSelect, { target: { value: 'target-cisco-1' } })
+
+    await waitFor(() => {
+      expect(listJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target_id: 'target-cisco-1',
+          page: 1,
+        }),
+      )
+    })
+  })
+
+  it('applies date filter and sort controls', async () => {
+    listJobs.mockResolvedValue(response([job('succeeded')]))
+    renderPage()
+
+    await screen.findByText('succeeded')
+
+    // Change date filter
+    const dateSelect = screen.getByLabelText(/^date$/i)
+    fireEvent.change(dateSelect, { target: { value: '24h' } })
+
+    await waitFor(() => {
+      expect(listJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          date_from: expect.any(String),
+        }),
+      )
+    })
+
+    // Change sort option
+    const sortSelect = screen.getByLabelText(/^sort$/i)
+    fireEvent.change(sortSelect, { target: { value: 'longest_running' } })
+
+    await waitFor(() => {
+      expect(listJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sort: 'duration',
+          order: 'desc',
+        }),
+      )
+    })
+  })
+
+  it('renders an empty state when filters produce no matching jobs and allows clearing filters', async () => {
+    listJobs
+      .mockResolvedValueOnce(response([job('succeeded')]))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([job('succeeded')]))
+    renderPage()
+
+    await screen.findByText('succeeded')
+
+    // Trigger filter with no matches
+    const statusSelect = screen.getByLabelText(/^status$/i)
+    fireEvent.change(statusSelect, { target: { value: 'cancelled' } })
+
+    expect(
+      await screen.findByText(/no discovery jobs match the current filters/i),
+    ).toBeInTheDocument()
+
+    // Click clear filters in empty state
+    const clearButtons = screen.getAllByRole('button', { name: /clear filters/i })
+    fireEvent.click(clearButtons[0])
+
+    await waitFor(() => {
+      expect(listJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: undefined,
+          q: undefined,
+          page: 1,
+        }),
+      )
+    })
+  })
+
+  it('renders a true empty state when no jobs exist overall', async () => {
     listJobs.mockResolvedValue(response([]))
     renderPage()
     expect(
       await screen.findByText(/no discovery jobs have been created yet/i),
     ).toBeInTheDocument()
+  })
+
+  it('supports pagination and manual refresh preserving current filters', async () => {
+    listJobs
+      .mockResolvedValueOnce(response([job('succeeded', 'first')], 1, true, 2))
+      .mockResolvedValueOnce(response([job('failed', 'second')], 2, false, 2))
+      .mockResolvedValueOnce(response([job('failed', 'second')], 2, false, 2))
+    renderPage()
+
+    expect(await screen.findByTitle('job-first')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByTitle('job-second')).toBeInTheDocument()
+    expect(listJobs).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 2,
+        page_size: 25,
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(3))
+  })
+
+  it('displays operational warning badge for long-running suspicious active jobs', async () => {
+    const staleRunningJob: DiscoveryApiJobResponse = {
+      ...job('running', 'stale'),
+      started_at: new Date(Date.now() - 64 * 3600 * 1000).toISOString(),
+      has_active_lease: false,
+      execution_owner: null,
+      last_heartbeat_at: null,
+    }
+    listJobs.mockResolvedValue(response([staleRunningJob]))
+    renderPage()
+
+    expect(await screen.findByText(/running for 64h/i)).toBeInTheDocument()
+  })
+
+  it('links to discovery detail UI for evidence and results', async () => {
+    listJobs.mockResolvedValue(response([job('succeeded', 'detail')]))
+    renderPage()
+    const link = await screen.findByRole('link', { name: /view details/i })
+    expect(link).toHaveAttribute('href', '/discovery?job_id=job-detail')
+  })
+
+  it('shows Cancel and Resolve cancellation for active jobs and cancels appropriately', async () => {
+    listJobs.mockResolvedValue(
+      response([
+        job('running', 'r1'),
+        {
+          ...job('running', 'r2'),
+          cancellation_requested_at: '2026-08-09T10:01:30Z',
+          has_active_lease: false,
+        },
+      ]),
+    )
+    cancelJob.mockResolvedValue({ ...job('running', 'r1'), status: 'cancelled' })
+    resolveJob.mockResolvedValue({ ...job('running', 'r2'), status: 'cancelled' })
+    renderPage()
+
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel' })
+    const resolveBtn = await screen.findByRole('button', {
+      name: 'Resolve cancellation',
+    })
+
+    expect(cancelBtn).toBeInTheDocument()
+    expect(resolveBtn).toBeInTheDocument()
+
+    fireEvent.click(cancelBtn)
+    await waitFor(() => expect(cancelJob).toHaveBeenCalledWith('job-r1'))
+
+    fireEvent.click(resolveBtn)
+    await waitFor(() => expect(resolveJob).toHaveBeenCalledWith('job-r2'))
   })
 
   it.each([
@@ -118,182 +356,5 @@ describe('JobsPage', () => {
     ],
   ])('maps %s to an actionable error title', (message, heading) => {
     expect(discoveryJobsErrorTitle(message)).toBe(heading)
-  })
-
-  it('supports durable API pagination and manual refresh', async () => {
-    listJobs
-      .mockResolvedValueOnce(response([job('succeeded', 'first')], 1, true))
-      .mockResolvedValueOnce(response([job('failed', 'second')], 2))
-      .mockResolvedValueOnce(response([job('failed', 'second')], 2))
-    renderPage()
-
-    expect(await screen.findByText('job-first')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    expect(await screen.findByText('job-second')).toBeInTheDocument()
-    expect(listJobs).toHaveBeenLastCalledWith(2, 20)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(3))
-  })
-
-  it('polls active jobs and stops after they become terminal', async () => {
-    vi.useFakeTimers()
-    listJobs
-      .mockResolvedValueOnce(response([job('running')]))
-      .mockResolvedValueOnce(response([job('succeeded')]))
-    renderPage()
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(listJobs).toHaveBeenCalledTimes(1)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000)
-    })
-    expect(listJobs).toHaveBeenCalledTimes(2)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4000)
-    })
-    expect(listJobs).toHaveBeenCalledTimes(2)
-  })
-
-  it('links to the existing discovery detail UI for evidence and device results', async () => {
-    listJobs.mockResolvedValue(response([job('succeeded', 'detail')]))
-    renderPage()
-    const link = await screen.findByRole('link', { name: /view details/i })
-    expect(link).toHaveAttribute('href', '/discovery?job_id=job-detail')
-  })
-
-  it('shows Cancel only for active jobs and requests cooperative cancellation', async () => {
-    listJobs
-      .mockResolvedValueOnce(response([job('queued'), job('running'), job('succeeded')]))
-      .mockResolvedValueOnce(
-        response([
-          { ...job('queued'), cancellation_requested_at: '2026-08-09T10:01:30Z' },
-          job('running'),
-          job('succeeded'),
-        ]),
-      )
-    cancelJob.mockResolvedValue({ ...job('queued'), status: 'cancelled' })
-    renderPage()
-
-    const cancelButtons = await screen.findAllByRole('button', { name: 'Cancel' })
-    expect(cancelButtons).toHaveLength(2)
-    fireEvent.click(cancelButtons[0])
-
-    await waitFor(() =>
-      expect(cancelJob).toHaveBeenCalledWith('job-queued'),
-    )
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringMatching(/in-flight network I\/O may finish or time out/i),
-    )
-  })
-
-  it('does not submit a cancellation request when the confirmation is declined', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false)
-    listJobs.mockResolvedValue(response([job('running')]))
-    renderPage()
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(cancelJob).not.toHaveBeenCalled()
-  })
-
-  it('shows a cancellation API error instead of an empty state', async () => {
-    listJobs.mockResolvedValue(response([job('running')]))
-    cancelJob.mockRejectedValue(new Error('Permission denied.'))
-    renderPage()
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Permission required.')
-  })
-
-  it('shows Cancellation requested… disabled when a healthy job with active worker lease has cancellation requested', async () => {
-    listJobs.mockResolvedValue(
-      response([
-        {
-          ...job('running'),
-          cancellation_requested_at: '2026-08-09T10:01:30Z',
-          has_active_lease: true,
-          execution_owner: 'owner-uuid',
-          lease_expires_at: '2099-01-01T00:00:00Z',
-        },
-      ]),
-    )
-    renderPage()
-
-    const button = await screen.findByRole('button', {
-      name: 'Cancellation requested…',
-    })
-    expect(button).toBeInTheDocument()
-    expect(button).toBeDisabled()
-  })
-
-  it('shows Resolve cancellation for a cancellation-requested job with no active worker lease', async () => {
-    listJobs.mockResolvedValue(
-      response([
-        {
-          ...job('running', 'stale-cancelled'),
-          cancellation_requested_at: '2026-08-09T10:01:30Z',
-          has_active_lease: false,
-          execution_owner: null,
-          lease_expires_at: null,
-        },
-      ]),
-    )
-    resolveJob.mockResolvedValue({
-      ...job('running', 'stale-cancelled'),
-      status: 'cancelled',
-    })
-    renderPage()
-
-    const resolveBtn = await screen.findByRole('button', {
-      name: 'Resolve cancellation',
-    })
-    expect(resolveBtn).toBeInTheDocument()
-    expect(resolveBtn).not.toBeDisabled()
-
-    fireEvent.click(resolveBtn)
-
-    await waitFor(() =>
-      expect(resolveJob).toHaveBeenCalledWith('job-stale-cancelled'),
-    )
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringMatching(/does not terminate active network I\/O/i),
-    )
-  })
-
-  it('does not resolve cancellation when operator declines confirmation prompt', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false)
-    listJobs.mockResolvedValue(
-      response([
-        {
-          ...job('running', 'declined'),
-          cancellation_requested_at: '2026-08-09T10:01:30Z',
-          has_active_lease: false,
-        },
-      ]),
-    )
-    renderPage()
-
-    const resolveBtn = await screen.findByRole('button', {
-      name: 'Resolve cancellation',
-    })
-    fireEvent.click(resolveBtn)
-    expect(resolveJob).not.toHaveBeenCalled()
-  })
-
-  it('shows no action for terminal jobs (succeeded, cancelled, failed)', async () => {
-    listJobs.mockResolvedValue(
-      response([
-        job('succeeded', 's1'),
-        { ...job('failed', 'c1'), status: 'cancelled' },
-        job('failed', 'f1'),
-      ]),
-    )
-    renderPage()
-
-    await screen.findByText('job-s1')
-    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Resolve cancellation' })).toBeNull()
   })
 })

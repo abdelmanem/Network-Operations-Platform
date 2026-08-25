@@ -323,7 +323,7 @@ class DiscoveryJobResponse(BaseModel):
     selected_transport: str | None = None
     selected_platform: str | None = None
     attempts: int = Field(ge=0)
-    error_code: DiscoveryFailureCode | None = None
+    error_code: DiscoveryFailureCode | str | None = None
     error_message: str | None = None
     created_at: datetime
     queued_at: datetime | None = None

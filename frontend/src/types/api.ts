@@ -198,6 +198,8 @@ export interface DiscoveryApiJobResponse {
   job_id: string
   tenant_id: string
   target_id: string
+  target_identifier?: string | null
+  target_address?: string | null
   discovery_run_id: string | null
   status:
     'queued' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'cancelled'
@@ -221,11 +223,24 @@ export interface DiscoveryApiJobResponse {
   has_active_lease?: boolean
 }
 
+export interface DiscoveryJobQueryParams {
+  q?: string
+  status?: string
+  target_id?: string
+  date_from?: string
+  date_to?: string
+  sort?: string
+  order?: 'asc' | 'desc'
+  page?: number
+  page_size?: number
+}
+
 export interface DiscoveryJobListResponse {
   items: DiscoveryApiJobResponse[]
   page: number
   page_size: number
   total: number
+  total_pages?: number
   has_next: boolean
 }
 

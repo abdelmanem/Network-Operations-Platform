@@ -28,6 +28,7 @@ vi.mock('../api/dashboard', () => ({
 
 vi.mock('../api/discovery', () => ({
   listDiscoveryApiJobs: mockListDiscoveryJobs,
+  listDiscoveryTargets: vi.fn().mockResolvedValue([]),
 }))
 
 describe('frontend foundation shell', () => {

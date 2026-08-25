@@ -429,17 +429,44 @@ def list_jobs(
     db_session: Annotated[Session, Depends(get_db_session)],
     _: Annotated[User, Depends(require_permission("discovery:job:read"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+    q: str | None = Query(default=None, description="Free-text search across job/run/target fields"),
+    status: str | None = Query(default=None, description="Filter by job status"),
+    target_id: UUID | None = Query(default=None, description="Filter by target UUID"),
+    date_from: datetime | None = Query(default=None, description="Filter jobs requested on or after timestamp"),
+    date_to: datetime | None = Query(default=None, description="Filter jobs requested on or before timestamp"),
+    sort: str | None = Query(default=None, description="Sort field (e.g. requested_at, started_at, completed_at, duration, target, status)"),
+    order: str | None = Query(default=None, description="Sort order: asc or desc"),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
+    page_size: int = Query(default=25, ge=1, le=100),
 ) -> DiscoveryJobListResponse:
-    records, total = DiscoveryJobRepository(db_session).list_page(
-        tenant_id=tenant_id, page=page, page_size=page_size
-    )
+    try:
+        records, total = DiscoveryJobRepository(db_session).list_page(
+            tenant_id=tenant_id,
+            page=page,
+            page_size=page_size,
+            q=q,
+            status=status,
+            target_id=target_id,
+            date_from=date_from,
+            date_to=date_to,
+            sort=sort,
+            order=order,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            if hasattr(status, "HTTP_422_UNPROCESSABLE_ENTITY")
+            else 422,
+            detail=str(exc),
+        ) from exc
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
     return DiscoveryJobListResponse(
         items=[_job_response(record) for record in records],
         page=page,
         page_size=page_size,
         total=total,
+        total_pages=total_pages,
         has_next=page * page_size < total,
     )
 
@@ -692,11 +719,19 @@ def _target_response(record: DiscoveryTargetRecord) -> DiscoveryTargetResponse:
 
 
 def _job_response(record: DiscoveryJobRecord) -> DiscoveryJobResponse:
+    target_identifier = None
+    target_address = None
+    if getattr(record, "target", None) is not None:
+        target_identifier = record.target.identifier
+        target_address = record.target.address
+
     return DiscoveryJobResponse.model_validate(
         {
             "job_id": record.id,
             "tenant_id": record.tenant_id,
             "target_id": record.target_id,
+            "target_identifier": target_identifier,
+            "target_address": target_address,
             "discovery_run_id": record.run_id,
             "status": record.state,
             "selected_transport": record.selected_transport,

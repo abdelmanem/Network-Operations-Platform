@@ -5,6 +5,7 @@ import type {
   CredentialProfileTestResponse,
   DiscoveryApiJobRequest,
   DiscoveryApiJobResponse,
+  DiscoveryJobQueryParams,
   DiscoveryJobListResponse,
   DiscoveryEvidenceResponse,
   DiscoveryDeviceResultResponse,
@@ -153,13 +154,17 @@ export async function createDiscoveryApiJob(
 }
 
 export async function listDiscoveryApiJobs(
-  page = 1,
-  pageSize = 20,
+  paramsOrPage: number | DiscoveryJobQueryParams = 1,
+  pageSize = 25,
 ): Promise<DiscoveryJobListResponse> {
+  const params =
+    typeof paramsOrPage === 'number'
+      ? { page: paramsOrPage, page_size: pageSize }
+      : { page: 1, page_size: 25, ...paramsOrPage }
   try {
     const response = await api.get<DiscoveryJobListResponse>(
       '/api/v1/discovery/jobs',
-      { params: { page, page_size: pageSize } },
+      { params },
     )
     return response.data
   } catch (error) {
