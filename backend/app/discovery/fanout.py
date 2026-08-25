@@ -191,6 +191,19 @@ class DiscoveryFanoutService:
                 )
                 if target is None:
                     raise
+        else:
+            target.vendor = scope.vendor
+            target.hostname = scope.hostname
+            target.platform_hint = scope.platform_hint
+            target.preferred_transport = scope.preferred_transport
+            target.enabled = scope.enabled
+            target.credential_reference = scope.credential_reference
+            target.credential_profile_id = scope.credential_profile_id
+            target.credential_references = dict(scope.credential_references)
+            target.allowed_fallback_transports = list(
+                scope.allowed_fallback_transports
+            )
+            target.metadata_json = dict(scope.metadata_json)
         run = DiscoveryRunRecord(
             tenant_id=tenant_id,
             target_identifier=target.identifier,

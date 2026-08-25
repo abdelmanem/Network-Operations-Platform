@@ -183,3 +183,75 @@ async def test_cidr_fanout_reuses_existing_child_targets_on_rerun() -> None:
     # Total targets remains 3 (1 root + 2 child targets reused, not duplicated)
     assert len(session.scalars(select(DiscoveryTargetRecord)).all()) == 3
 
+
+@pytest.mark.anyio
+async def test_cidr_fanout_synchronizes_stale_existing_child_configuration() -> None:
+    session = _session()
+    parent_profile_id = str(uuid4())
+    target = DiscoveryTargetRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        identifier="scope-01",
+        address="192.0.2.0/30",
+        scope_type=DiscoveryScopeType.CIDR_NETWORK.value,
+        scope_cidr="192.0.2.0/30",
+        enabled=True,
+        credential_reference="parent-provider-reference",
+        credential_profile_id=parent_profile_id,
+        preferred_transport="netmiko",
+        platform_hint="cisco-ios",
+        metadata_json={"platform_family": "catalyst-2960x"},
+    )
+    run = DiscoveryRunRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        target_identifier=target.identifier,
+        status="started",
+        metadata_json={},
+    )
+    session.add_all([target, run])
+    session.flush()
+    existing_child = DiscoveryTargetRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        identifier="scope-01:192.0.2.1",
+        address="192.0.2.1",
+        scope_type="single_device",
+        enabled=True,
+        credential_reference="stale-provider-reference",
+        credential_profile_id=str(uuid4()),
+        preferred_transport="snmp",
+        platform_hint="stale-platform",
+        metadata_json={"stale": True},
+    )
+    session.add(existing_child)
+    session.flush()
+    parent = DiscoveryJobRecord(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        target_id=target.id,
+        run_id=run.id,
+        state="running",
+        requested_capabilities={"collector_name": "fanout"},
+        attempts=1,
+    )
+    session.add(parent)
+    session.commit()
+
+    registry = CollectorRegistry()
+    registry.register(FanoutCollector(name="fanout", capabilities=frozenset()))
+    results = await DiscoveryFanoutService(
+        session, registry, concurrency=1, max_targets=10
+    ).execute(tenant_id="tenant-a", parent_job_id=parent.id)
+
+    synchronized = session.get(DiscoveryTargetRecord, existing_child.id)
+    assert synchronized is not None
+    assert synchronized.tenant_id == "tenant-a"
+    assert synchronized.identifier == "scope-01:192.0.2.1"
+    assert synchronized.address == "192.0.2.1"
+    assert synchronized.credential_profile_id == parent_profile_id
+    assert synchronized.credential_reference == "parent-provider-reference"
+    assert synchronized.preferred_transport == "netmiko"
+    assert synchronized.platform_hint == "cisco-ios"
+    assert len(results) == 2
+
