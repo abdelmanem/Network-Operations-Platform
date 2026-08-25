@@ -15,8 +15,8 @@ from fastapi import (
     Query,
     Request,
     Response,
-    status as http_status,
 )
+from fastapi import status as http_status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
