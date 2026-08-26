@@ -91,6 +91,36 @@ class DiscoveryRunRecord(ImmutableHistoryMixin, BaseModel):
         default=dict,
         nullable=False,
     )
+    total_scanned: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+    total_discovered: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+    total_unreachable: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+    total_reachable_no_management: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+    total_authentication_failed: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+    total_partial_discovery: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
 
     snapshots: Mapped[list[SnapshotRecord]] = relationship(
         back_populates="discovery_run",
@@ -139,6 +169,9 @@ class DiscoveryTargetRecord(BaseModel):
     )
     allowed_fallback_transports: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
+    )
+    allow_insecure_telnet: Mapped[bool] = mapped_column(
+        default=False, nullable=False
     )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=dict, nullable=False
@@ -285,6 +318,7 @@ class DiscoveryDeviceResultRecord(BaseModel):
     vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
     platform: Mapped[str | None] = mapped_column(String(128), nullable=True)
     state: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    result_state: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     selected_transport: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)

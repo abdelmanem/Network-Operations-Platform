@@ -62,6 +62,7 @@ from backend.app.schemas.discovery import (
     DiscoveryJobListResponse,
     DiscoveryJobRequest,
     DiscoveryJobResponse,
+    DiscoveryRunSummary,
     DiscoveryTargetRequest,
     DiscoveryTargetResponse,
     DiscoveryTargetUpdateRequest,
@@ -121,6 +122,7 @@ def create_target(
             credential_profile_id=payload.credential_profile_id,
             credential_references=dict(payload.credential_references),
             allowed_fallback_transports=payload.allowed_fallback_transports,
+            allow_insecure_telnet=payload.allow_insecure_telnet,
             platform_hint=payload.platform_hint,
             preferred_transport=payload.preferred_transport,
             enabled=payload.enabled,
@@ -570,6 +572,7 @@ def get_job_devices(
                 "model": models_by_management_ip.get(record.address),
                 "platform": record.platform,
                 "state": record.state,
+                "result_state": record.result_state,
                 "selected_transport": record.selected_transport,
                 "failure_code": record.failure_code,
                 "failure_message": record.failure_message,
@@ -726,6 +729,7 @@ def _target_response(record: DiscoveryTargetRecord) -> DiscoveryTargetResponse:
             "platform_hint": record.platform_hint,
             "preferred_transport": record.preferred_transport,
             "allowed_fallback_transports": record.allowed_fallback_transports,
+            "allow_insecure_telnet": bool(getattr(record, "allow_insecure_telnet", False)),
             "credential_references": list(record.credential_references),
             "credential_profile_id": record.credential_profile_id,
             "enabled": record.enabled,
@@ -819,6 +823,40 @@ def _evidence_response(record: DiscoveryEvidenceRecord) -> DiscoveryEvidenceResp
             "parser_version": record.parser_version,
             "normalization_version": record.normalization_version,
             "content_hash": record.payload_hash,
+        }
+    )
+
+
+@router.get(
+    "/runs/{run_id}",
+    response_model=DiscoveryRunSummary,
+    summary="Get discovery run summary with result categorization",
+)
+def get_run_summary(
+    run_id: UUID,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:job:read"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> DiscoveryRunSummary:
+    run = db_session.get(DiscoveryRunRecord, run_id)
+    if run is None or run.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Discovery run was not found.")
+    return DiscoveryRunSummary.model_validate(
+        {
+            "id": run.id,
+            "target_identifier": run.target_identifier,
+            "target_address": run.target_address,
+            "status": run.status,
+            "metadata": dict(run.metadata_json or {}),
+            "created_at": run.created_at,
+            "started_at": run.started_at,
+            "finished_at": run.finished_at,
+            "total_scanned": run.total_scanned or 0,
+            "total_discovered": run.total_discovered or 0,
+            "total_unreachable": run.total_unreachable or 0,
+            "total_reachable_no_management": run.total_reachable_no_management or 0,
+            "total_authentication_failed": run.total_authentication_failed or 0,
+            "total_partial_discovery": run.total_partial_discovery or 0,
         }
     )
 

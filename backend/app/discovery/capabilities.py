@@ -9,8 +9,10 @@ class CollectorCapability(StrEnum):
     """Capabilities that collectors may advertise."""
 
     SSH = "SSH"
+    TELNET = "TELNET"
     SNMP = "SNMP"
     HTTP = "HTTP"
+    HTTPS = "HTTPS"
     CDP = "CDP"
     LLDP = "LLDP"
     CONFIG_BACKUP = "CONFIG_BACKUP"
@@ -20,3 +22,13 @@ class CollectorCapability(StrEnum):
     ARP_TABLE = "ARP_TABLE"
     POWER = "POWER"
     POE = "POE"
+
+
+TRANSPORT_TO_COLLECTOR_CAPABILITY: dict[str, CollectorCapability] = {
+    "ssh": CollectorCapability.SSH,
+    "telnet": CollectorCapability.TELNET,
+    "snmp": CollectorCapability.SNMP,
+    "http": CollectorCapability.HTTP,
+    "https": CollectorCapability.HTTPS,
+}
+

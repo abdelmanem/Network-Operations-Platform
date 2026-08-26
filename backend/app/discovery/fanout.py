@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -105,14 +105,92 @@ class DiscoveryFanoutService:
                     lease_seconds=lease_seconds,
                     lease_lost=lease_lost,
                 )
+                self.session.refresh(result)
                 result.state = outcome.job.state
                 result.selected_transport = outcome.job.selected_transport
                 result.failure_code = outcome.job.failure_code
                 result.failure_message = outcome.job.failure_message
                 result.completed_at = datetime.now(UTC)
+                if result.result_state is None:
+                    from backend.app.discovery.result_states import DiscoveryResultState
+
+                    if outcome.job.state == "succeeded":
+                        result.result_state = DiscoveryResultState.DISCOVERED.value
+                    elif outcome.job.failure_code in {
+                        "AUTHENTICATION_FAILED",
+                    }:
+                        result.result_state = (
+                            DiscoveryResultState.AUTHENTICATION_FAILED.value
+                        )
+                    elif outcome.job.failure_code in {
+                        "CONNECTION_REFUSED",
+                        "TRANSPORT_UNAVAILABLE",
+                        "UNSUPPORTED_CAPABILITY",
+                        "UNSUPPORTED_CREDENTIAL",
+                        "UNSUPPORTED_PLATFORM",
+                    }:
+                        result.result_state = (
+                            DiscoveryResultState.REACHABLE_NO_MANAGEMENT.value
+                        )
+                    elif outcome.job.failure_code in {
+                        "CONNECTION_FAILED",
+                        "CONNECTION_TIMEOUT",
+                        "HOST_UNREACHABLE",
+                        "DISCOVERY_TIMEOUT",
+                    }:
+                        result.result_state = DiscoveryResultState.UNREACHABLE.value
+                    else:
+                        result.result_state = (
+                            DiscoveryResultState.REACHABLE_NO_MANAGEMENT.value
+                        )
                 self.session.commit()
 
         await asyncio.gather(*(run_child(child, result) for child, result in children))
+
+        # Aggregate summary counts into parent DiscoveryRunRecord
+        if parent.run_id is not None:
+            from backend.app.discovery.result_states import DiscoveryResultState
+
+            parent_run = self.session.get(DiscoveryRunRecord, parent.run_id)
+            if parent_run is not None:
+                from collections import Counter
+
+                all_results = [r for _, r in children]
+                state_counts: Counter[str] = Counter()
+                for r in all_results:
+                    state = r.result_state
+                    if state is None:
+                        state = DiscoveryResultState.UNREACHABLE.value
+                    state_counts[state] += 1
+
+                total = len(all_results)
+                run_metadata = dict(parent_run.metadata_json or {})
+                run_metadata["summary_calculated"] = True
+                self.session.execute(
+                    update(DiscoveryRunRecord)
+                    .where(DiscoveryRunRecord.id == parent_run.id)
+                    .values(
+                        total_scanned=total,
+                        total_discovered=state_counts.get(
+                            DiscoveryResultState.DISCOVERED.value, 0
+                        ),
+                        total_unreachable=state_counts.get(
+                            DiscoveryResultState.UNREACHABLE.value, 0
+                        ),
+                        total_reachable_no_management=state_counts.get(
+                            DiscoveryResultState.REACHABLE_NO_MANAGEMENT.value, 0
+                        ),
+                        total_authentication_failed=state_counts.get(
+                            DiscoveryResultState.AUTHENTICATION_FAILED.value, 0
+                        ),
+                        total_partial_discovery=state_counts.get(
+                            DiscoveryResultState.PARTIAL_DISCOVERY.value, 0
+                        ),
+                        metadata_json=run_metadata,
+                    )
+                )
+                self.session.commit()
+
         return tuple(result for _, result in children)
 
     def _cancel_child(
@@ -177,6 +255,9 @@ class DiscoveryFanoutService:
                         allowed_fallback_transports=list(
                             scope.allowed_fallback_transports
                         ),
+                        allow_insecure_telnet=bool(
+                            getattr(scope, "allow_insecure_telnet", False)
+                        ),
                         metadata_json=dict(scope.metadata_json),
                     )
                     self.session.add(new_target)
@@ -202,6 +283,9 @@ class DiscoveryFanoutService:
             target.credential_references = dict(scope.credential_references)
             target.allowed_fallback_transports = list(
                 scope.allowed_fallback_transports
+            )
+            target.allow_insecure_telnet = bool(
+                getattr(scope, "allow_insecure_telnet", False)
             )
             target.metadata_json = dict(scope.metadata_json)
         run = DiscoveryRunRecord(

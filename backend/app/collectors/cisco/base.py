@@ -31,13 +31,17 @@ logger = logging.getLogger(__name__)
 
 TRANSPORT_PRIORITY: tuple[TransportCapability, ...] = (
     TransportCapability.SSH,
-    TransportCapability.SNMP,
+    TransportCapability.TELNET,
+    TransportCapability.HTTPS,
     TransportCapability.HTTP,
+    TransportCapability.SNMP,
 )
 DEFAULT_TRANSPORT_NAMES: Mapping[TransportCapability, tuple[str, ...]] = {
     TransportCapability.SSH: ("netmiko", "paramiko"),
-    TransportCapability.SNMP: ("pysnmp",),
+    TransportCapability.TELNET: ("telnetlib",),
+    TransportCapability.HTTPS: ("httpx",),
     TransportCapability.HTTP: ("httpx",),
+    TransportCapability.SNMP: ("pysnmp",),
 }
 SSH_COMMAND_CATEGORIES: tuple[CommandCategory, ...] = (
     CommandCategory.INVENTORY,
@@ -223,12 +227,22 @@ class CiscoInventoryCollectorBase(BaseCollector):
             "transport": selection.transport_name,
             "transport_capability": selection.capability.value,
         }
-        if selection.capability == TransportCapability.SSH:
-            payload["commands"] = await self._collect_ssh(platform, session, context)
+        if selection.capability in (
+            TransportCapability.SSH,
+            TransportCapability.TELNET,
+        ):
+            payload["commands"] = await self._collect_cli(
+                platform, session, context, selection.capability
+            )
         elif selection.capability == TransportCapability.SNMP:
             payload["snmp"] = await self._collect_snmp(platform, session, context)
-        elif selection.capability == TransportCapability.HTTP:
-            payload["http"] = await self._collect_http(platform, session, context)
+        elif selection.capability in (
+            TransportCapability.HTTP,
+            TransportCapability.HTTPS,
+        ):
+            payload["http"] = await self._collect_http(
+                platform, session, context, selection.capability
+            )
         else:  # pragma: no cover - defensive guard for future enum values
             raise CiscoInventoryCollectionError(
                 f"Unsupported transport capability: {selection.capability}"
@@ -326,14 +340,18 @@ class CiscoInventoryCollectorBase(BaseCollector):
             raise CiscoInventoryCollectionError("Cisco transport selector is missing.")
         return self.selector.select(platform, preferred_transport_name=preferred)
 
-    async def _collect_ssh(
+    async def _collect_cli(
         self,
         platform: CiscoPlatformDefinition,
         session: object,
         context: CollectorContext,
+        capability: TransportCapability,
     ) -> dict[str, str]:
         if not isinstance(session, CommandSession):
-            raise CiscoInventoryCollectionError("Selected SSH session cannot execute.")
+            label = capability.value
+            raise CiscoInventoryCollectionError(
+                f"Selected {label} session cannot execute commands."
+            )
 
         commands: dict[str, str] = {}
         for command in self._inventory_commands(platform):
@@ -371,9 +389,13 @@ class CiscoInventoryCollectorBase(BaseCollector):
         platform: CiscoPlatformDefinition,
         session: object,
         context: CollectorContext,
+        capability: TransportCapability,
     ) -> dict[str, str]:
         if not isinstance(session, HttpRequestSession):
-            raise CiscoInventoryCollectionError("Selected HTTP session cannot request.")
+            label = capability.value
+            raise CiscoInventoryCollectionError(
+                f"Selected {label} session cannot request."
+            )
 
         responses: dict[str, str] = {}
         for endpoint in platform.http_catalog.endpoints:

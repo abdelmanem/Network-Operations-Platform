@@ -267,7 +267,11 @@ async def test_parser_failure_marks_job_failed_and_keeps_raw_evidence() -> None:
         session.execute(select(DiscoveryEvidenceRecord)).scalar_one().job_id == job.id
     )
     assert session.execute(select(SnapshotRecord)).scalars().all() == []
-    assert session.execute(select(DiscoveryDeviceResultRecord)).scalars().all() == []
+    device_results = session.execute(
+        select(DiscoveryDeviceResultRecord)
+    ).scalars().all()
+    assert len(device_results) == 1
+    assert device_results[0].failure_code == "DISCOVERY_FAILED"
 
 
 @pytest.mark.anyio

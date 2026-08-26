@@ -34,6 +34,7 @@ class DiscoveryTargetRequest(BaseModel):
     credential_profile_id: str | None = Field(default=None, max_length=255)
     credential_references: dict[str, str] = Field(default_factory=dict)
     allowed_fallback_transports: list[str] = Field(default_factory=list)
+    allow_insecure_telnet: bool = False
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @field_validator("identifier", "tenant_id")
@@ -55,6 +56,15 @@ class DiscoveryTargetRequest(BaseModel):
         )
         if self.credential_profile_id is None and self.credential_reference is None:
             raise ValueError("A credential profile is required.")
+
+        uses_telnet = (
+            (self.preferred_transport and self.preferred_transport.lower() == "telnet")
+            or "telnet" in {t.lower() for t in self.allowed_fallback_transports}
+        )
+        if uses_telnet and not self.allow_insecure_telnet:
+            raise ValueError(
+                "Telnet is insecure. Set allow_insecure_telnet=true to explicitly enable."
+            )
         return self
 
     @field_validator("platform_hint")
@@ -101,8 +111,6 @@ class DiscoveryTargetRequest(BaseModel):
         supported = {"ssh", "snmp", "telnet", "icmp", "http", "https", "cisco-api"}
         if any(transport not in supported for transport in value):
             raise ValueError("Unsupported discovery fallback transport.")
-        if "telnet" in value:
-            raise ValueError("Telnet requires explicit insecure-transport approval.")
         return list(dict.fromkeys(value))
 
 
@@ -170,6 +178,7 @@ class DiscoveryTargetResponse(BaseModel):
     platform_hint: str | None = None
     preferred_transport: str | None = None
     allowed_fallback_transports: list[str] = Field(default_factory=list)
+    allow_insecure_telnet: bool = False
     credential_references: list[str] = Field(default_factory=list)
     credential_profile_id: str | None = None
     enabled: bool
@@ -377,6 +386,7 @@ class DiscoveryDeviceResultResponse(BaseModel):
     model: str | None = None
     platform: str | None = None
     state: str
+    result_state: str | None = None
     selected_transport: str | None = None
     failure_code: str | None = None
     failure_message: str | None = None
@@ -400,7 +410,7 @@ class DiscoveryTransportAttemptResponse(BaseModel):
 
 
 class DiscoveryRunSummary(BaseModel):
-    """Summary of a persisted discovery run."""
+    """Summary of a persisted discovery run with detailed result categories."""
 
     id: UUID
     target_identifier: str
@@ -410,6 +420,13 @@ class DiscoveryRunSummary(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # Summary counts by result state
+    total_scanned: int | None = Field(default=None, ge=0)
+    total_discovered: int | None = Field(default=None, ge=0)
+    total_unreachable: int | None = Field(default=None, ge=0)
+    total_reachable_no_management: int | None = Field(default=None, ge=0)
+    total_authentication_failed: int | None = Field(default=None, ge=0)
+    total_partial_discovery: int | None = Field(default=None, ge=0)
 
 
 class DiscoveryRunListResponse(PaginatedResponse[DiscoveryRunSummary]):

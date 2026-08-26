@@ -192,9 +192,16 @@ class ProfileSecretCredentialProvider:
 
         credential_type = (profile.credential_type or "").strip().lower()
         if transport == "ssh":
-            if credential_type not in {"ssh_password", "telnet_password"}:
+            if credential_type not in {"ssh_password", "telnet_password", "ssh_key"}:
                 raise CredentialResolutionError(
                     "Credential profile is not compatible with SSH."
+                )
+            if credential_type == "ssh_key":
+                return TokenCredentials(
+                    token=self.secret_provider.resolve_secret(
+                        profile.provider_reference
+                    ),
+                    scheme="SSH-KEY",
                 )
             if not profile.username:
                 raise CredentialResolutionError(
@@ -206,21 +213,58 @@ class ProfileSecretCredentialProvider:
                     profile.provider_reference
                 ),
             )
-        if transport == "snmp":
-            if credential_type != "snmp_v2c":
+        if transport == "telnet":
+            if credential_type not in {"ssh_password", "telnet_password"}:
                 raise CredentialResolutionError(
-                    "Credential profile is not compatible with SNMP."
+                    "Credential profile is not compatible with Telnet."
                 )
-            return SNMPv2cCredentials(
-                community=self.secret_provider.resolve_secret(
+            if not profile.username:
+                raise CredentialResolutionError(
+                    "Credential profile username is required for Telnet."
+                )
+            return UsernamePasswordCredentials(
+                username=profile.username,
+                password=self.secret_provider.resolve_secret(
+                    profile.provider_reference
+                ),
+            )
+        if transport == "snmp":
+            if credential_type == "snmp_v2c":
+                return SNMPv2cCredentials(
+                    community=self.secret_provider.resolve_secret(
+                        profile.provider_reference
+                    )
+                )
+            if credential_type == "snmp_v3":
+                if not profile.username:
+                    raise CredentialResolutionError(
+                        "Credential profile username is required for SNMPv3."
+                    )
+                secret_value = self.secret_provider.resolve_secret(
                     profile.provider_reference
                 )
+                parts = secret_value.split("::") if secret_value else []
+                security_level = parts[0] if len(parts) >= 1 and parts[0] else "authNoPriv"
+                auth_protocol = parts[1] if len(parts) > 1 else None
+                auth_secret = parts[2] if len(parts) > 2 else None
+                privacy_protocol = parts[3] if len(parts) > 3 else None
+                privacy_secret = parts[4] if len(parts) > 4 else None
+                return SNMPv3Credentials(
+                    username=profile.username,
+                    security_level=security_level,
+                    auth_protocol=auth_protocol,
+                    auth_secret=auth_secret,
+                    privacy_protocol=privacy_protocol,
+                    privacy_secret=privacy_secret,
+                )
+            raise CredentialResolutionError(
+                "Credential profile is not compatible with SNMP."
             )
         if transport == "http":
             if credential_type == "http_basic":
                 if not profile.username:
                     raise CredentialResolutionError(
-                        "Credential profile username is required for HTTP basic auth."
+                        "Credential profile username is required for HTTP/HTTPS basic auth."
                     )
                 return UsernamePasswordCredentials(
                     username=profile.username,
@@ -234,6 +278,9 @@ class ProfileSecretCredentialProvider:
                         profile.provider_reference
                     )
                 )
+            raise CredentialResolutionError(
+                "Credential profile is not compatible with HTTP/HTTPS."
+            )
 
         raise CredentialResolutionError(
             "Credential profile is not compatible with the selected transport."
@@ -255,8 +302,10 @@ class ProfileSecretCredentialProvider:
             "ssh": "ssh",
             "paramiko": "ssh",
             "netmiko": "ssh",
+            "telnet": "telnet",
             "snmp": "snmp",
             "snmpv2c": "snmp",
+            "snmpv3": "snmp",
             "pysnmp": "snmp",
             "http": "http",
             "https": "http",

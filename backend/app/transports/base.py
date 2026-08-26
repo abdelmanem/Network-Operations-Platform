@@ -20,6 +20,7 @@ class TransportCapability(StrEnum):
     TELNET = "TELNET"
     ICMP = "ICMP"
     HTTP = "HTTP"
+    HTTPS = "HTTPS"
 
 
 class TransportSecurity(StrEnum):
