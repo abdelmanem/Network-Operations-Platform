@@ -37,15 +37,6 @@ interface LoadState {
   error?: string
 }
 
-// Used only by the Variance Report so structural gaps (missing/unexpected
-// devices) are computed against the FULL inventory on each side, never
-// against whatever page or search/filter happens to be active on the
-// Expected/Live browsing views. If a site ever exceeds this many devices
-// on one side, the durable fix is a dedicated backend diff/reconciliation
-// endpoint rather than pulling everything client-side — flag it if that
-// ever becomes a real ceiling.
-const FULL_INVENTORY_PAGE_SIZE = 5000
-
 export function NetworkPage() {
   // Main state
   const [currentSection, setCurrentSection] = useState<PageSection>('overview')
@@ -73,16 +64,6 @@ export function NetworkPage() {
     key: InventorySortKey
     direction: SortDirection
   }>({ key: 'name', direction: 'asc' })
-
-  // Variance report data — full, unfiltered NetBox + Live inventories,
-  // loaded on demand only when the report is opened (see loadVarianceReport).
-  const [varianceReportState, setVarianceReportState] = useState<LoadState>({
-    state: 'loading',
-  })
-  const [varianceNetboxFull, setVarianceNetboxFull] =
-    useState<InventoryListResponse | null>(null)
-  const [varianceLiveFull, setVarianceLiveFull] =
-    useState<InventoryListResponse | null>(null)
 
   // Comparison data
   const [comparison, setComparison] = useState<DeviceComparisonResponse | null>(
@@ -167,31 +148,6 @@ export function NetworkPage() {
       })
     }
   }, [liveQuery])
-
-  // Load the complete, unfiltered inventories for the variance report.
-  // Deliberately independent of netboxQuery/liveQuery and only triggered
-  // from the "View Variance Report" action — see the note on
-  // FULL_INVENTORY_PAGE_SIZE above for why this isn't a page-1-only call.
-  const loadVarianceReport = useCallback(async () => {
-    setVarianceReportState({ state: 'loading' })
-    try {
-      const [netbox, live] = await Promise.all([
-        listNetboxInventory(1, FULL_INVENTORY_PAGE_SIZE, {}),
-        listLiveInventory(1, FULL_INVENTORY_PAGE_SIZE, {}),
-      ])
-      setVarianceNetboxFull(netbox)
-      setVarianceLiveFull(live)
-      setVarianceReportState({ state: 'ready' })
-    } catch (err) {
-      setVarianceReportState({
-        state: 'error',
-        error:
-          err instanceof Error
-            ? err.message
-            : 'Failed to load the variance report',
-      })
-    }
-  }, [])
 
   // Load device comparison
   const loadComparison = useCallback(async (deviceId: string) => {
@@ -283,42 +239,9 @@ export function NetworkPage() {
     }
   }, [netboxInventory, liveInventory])
 
-  // Structural variance between the FULL netbox/live inventories — this is
-  // the data source for the Variance Report, and is intentionally separate
-  // from varianceSummary above (which reflects whatever page/search/filter
-  // is active on the browsing views and can under- or over-count on any
-  // site with more devices than one page).
-  const varianceReport = useMemo(() => {
-    if (!varianceNetboxFull || !varianceLiveFull) return null
-
-    const liveById = new Map(
-      varianceLiveFull.items.map((device) => [device.device_id, device]),
-    )
-    const netboxById = new Map(
-      varianceNetboxFull.items.map((device) => [device.device_id, device]),
-    )
-
-    const missingDevices = varianceNetboxFull.items.filter(
-      (device) => !liveById.has(device.device_id),
-    )
-    const unexpectedDevices = varianceLiveFull.items.filter(
-      (device) => !netboxById.has(device.device_id),
-    )
-    const matchedCount = varianceNetboxFull.items.filter((device) =>
-      liveById.has(device.device_id),
-    ).length
-
-    return { missingDevices, unexpectedDevices, matchedCount }
-  }, [varianceNetboxFull, varianceLiveFull])
-
   // Handle device selection from inventory
   const handleSelectDevice = (deviceId: string) => {
     void loadComparison(deviceId)
-  }
-
-  const openVarianceReport = () => {
-    setCurrentSection('variance')
-    void loadVarianceReport()
   }
 
   // Format timestamp for display
@@ -494,13 +417,6 @@ export function NetworkPage() {
       )}
 
       <div className="network-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={openVarianceReport}
-        >
-          View Variance Report →
-        </button>
         <button
           type="button"
           className="btn btn-outline"
@@ -826,172 +742,6 @@ export function NetworkPage() {
             Next →
           </button>
         </div>
-
-        <div className="network-back">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => setCurrentSection('overview')}
-          >
-            ← Back to Overview
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // =========================================================================
-  // RENDER: Variance Report — the direct answer to "where do NetBox and the
-  // real network disagree", computed from the complete inventories on both
-  // sides rather than whatever page/search/filter is active elsewhere.
-  // =========================================================================
-  const renderVarianceReport = () => {
-    if (varianceReportState.state === 'loading' || !varianceReport) {
-      return (
-        <EmptyState
-          title="Loading"
-          message="Comparing the complete NetBox and live inventories…"
-        />
-      )
-    }
-
-    if (varianceReportState.state === 'error') {
-      return (
-        <ErrorState
-          message={
-            varianceReportState.error || 'Failed to load the variance report'
-          }
-          onRetry={() => void loadVarianceReport()}
-        />
-      )
-    }
-
-    const { missingDevices, unexpectedDevices, matchedCount } = varianceReport
-
-    return (
-      <div className="card">
-        <h2>Network Variance Report</h2>
-        <p className="muted">
-          Every device that differs by identity between the complete NetBox
-          inventory and the complete live-discovered inventory — independent
-          of any search or filter set on the Expected/Live pages.
-        </p>
-
-        <div className="network-variance-summary">
-          <div className="network-variance-summary-item network-variance-summary-missing">
-            <span>Missing from live</span>
-            <strong>{missingDevices.length}</strong>
-          </div>
-          <div className="network-variance-summary-item network-variance-summary-unexpected">
-            <span>Unexpected in live</span>
-            <strong>{unexpectedDevices.length}</strong>
-          </div>
-          <div className="network-variance-summary-item network-variance-summary-matched">
-            <span>Matching device identity</span>
-            <strong>{matchedCount}</strong>
-          </div>
-        </div>
-
-        <div className="network-variance-report-section">
-          <h3>Missing from live discovery ({missingDevices.length})</h3>
-          <p className="muted">
-            In NetBox but not seen by the last discovery run — could mean the
-            device is offline, unreachable, or decommissioned but not yet
-            removed from NetBox.
-          </p>
-          {missingDevices.length === 0 ? (
-            <p className="network-diff-empty">
-              None — every NetBox device was discovered.
-            </p>
-          ) : (
-            <div className="network-table-wrap">
-              <table className="network-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Model</th>
-                    <th>Platform</th>
-                    <th>Management IP</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {missingDevices.map((device) => (
-                    <tr key={device.device_id}>
-                      <td>{device.name || device.device_id}</td>
-                      <td>{device.model || '—'}</td>
-                      <td>{device.platform || '—'}</td>
-                      <td>{device.management_ip || '—'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="network-table-action-btn"
-                          onClick={() => handleSelectDevice(device.device_id)}
-                        >
-                          Compare
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <div className="network-variance-report-section">
-          <h3>Unexpected in live discovery ({unexpectedDevices.length})</h3>
-          <p className="muted">
-            Seen by discovery but not present in NetBox — could mean a new or
-            unregistered device on the network.
-          </p>
-          {unexpectedDevices.length === 0 ? (
-            <p className="network-diff-empty">
-              None — every discovered device is registered in NetBox.
-            </p>
-          ) : (
-            <div className="network-table-wrap">
-              <table className="network-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Model</th>
-                    <th>Platform</th>
-                    <th>Management IP</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unexpectedDevices.map((device) => (
-                    <tr key={device.device_id}>
-                      <td>{device.name || device.device_id}</td>
-                      <td>{device.model || '—'}</td>
-                      <td>{device.platform || '—'}</td>
-                      <td>{device.management_ip || '—'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="network-table-action-btn"
-                          onClick={() => handleSelectDevice(device.device_id)}
-                        >
-                          Compare
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <p className="network-variance-note muted">
-          {matchedCount} device{matchedCount === 1 ? '' : 's'} exist in both
-          inventories by ID. This report flags identity-level gaps only —
-          it doesn't yet check whether a matched device's fields (IP, model,
-          platform…) have drifted. Open a device from Expected or Live
-          inventory and click Compare to check that.
-        </p>
 
         <div className="network-back">
           <button
@@ -1370,7 +1120,6 @@ export function NetworkPage() {
       {currentSection === 'overview' && renderOverview()}
       {currentSection === 'expected' && renderExpectedInventory()}
       {currentSection === 'live' && renderLiveInventory()}
-      {currentSection === 'variance' && renderVarianceReport()}
       {currentSection === 'comparison' && renderComparison()}
       {currentSection === 'detail' && renderDetail()}
     </div>
