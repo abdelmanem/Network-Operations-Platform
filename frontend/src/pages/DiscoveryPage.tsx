@@ -7,6 +7,8 @@ import {
   getDiscoveryApiJob,
   getDiscoveryEvidence,
   getDiscoveryDeviceResults,
+  getDiscoveryRunSummary,
+  getDiscoveryTransportAttempts,
   listDiscoveryCredentialProfiles,
   listDiscoveryTargets,
   testDiscoveryCredentialProfile,
@@ -18,6 +20,8 @@ import type {
   DiscoveryApiJobResponse,
   DiscoveryEvidenceResponse,
   DiscoveryDeviceResultResponse,
+  DiscoveryRunSummaryResponse,
+  DiscoveryTransportAttemptResponse,
   DiscoveryTargetResponse,
 } from '../types/api'
 import './DiscoveryPage.css'
@@ -90,6 +94,26 @@ const transportLabels: Record<string, string> = {
   http: 'HTTP',
   telnet: 'Telnet',
   https: 'HTTPS',
+}
+
+const supportedTransports = ['ssh', 'telnet', 'https', 'http', 'snmp']
+
+const resultStateMessages: Record<string, string> = {
+  discovered: 'Device discovered successfully',
+  partial_discovery: 'Device was reached but only partial information was collected',
+  authentication_failed: 'Management service is reachable but authentication failed',
+  reachable_no_management: 'Host is reachable but no supported management service responded',
+  unreachable: 'Host is unreachable',
+}
+
+function normalizedTransport(value: string | null | undefined) {
+  if (value === 'netmiko') return 'ssh'
+  return value?.toLowerCase() || ''
+}
+
+function resultState(result: DiscoveryDeviceResultResponse) {
+  const state = (result.result_state || result.state || '').toLowerCase()
+  return state === 'succeeded' ? 'discovered' : state
 }
 
 function formatPlatform(value: string | null | undefined) {
@@ -559,7 +583,7 @@ function SelectedTargetPanel({
   profileTestResult: CredentialProfileTestResponse | null
   testingCredential: boolean
   savingTargetProfile?: boolean
-  onTestCredential: () => void
+  onTestCredential: (transport: string) => void
   onManageProfiles: () => void
   onSaveTargetProfile?: (targetId: string, profileId: string) => Promise<void>
 }) {
@@ -588,6 +612,9 @@ function SelectedTargetPanel({
 
   const transport =
     activeProfile?.transport_types[0] || target?.preferred_transport || 'ssh'
+  const [testTransport, setTestTransport] = useState(
+    normalizedTransport(activeProfile?.transport_types[0]) || 'ssh',
+  )
   const secretStatus = getSecretStatus(activeProfile, profileTestResult)
 
   if (!target) {
@@ -657,11 +684,24 @@ function SelectedTargetPanel({
                   </div>
                 </div>
                 <div className="discovery-credential-actions">
+                  <label className="discovery-form-field">
+                    Test transport
+                    <select
+                      value={testTransport}
+                      onChange={(event) => setTestTransport(event.target.value)}
+                    >
+                      {(activeProfile?.transport_types || ['ssh']).map((item) => (
+                        <option key={item} value={normalizedTransport(item)}>
+                          {formatTransport(item)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button
                     type="button"
                     className="discovery-btn discovery-btn-secondary discovery-btn-compact"
                     disabled={testingCredential}
-                    onClick={onTestCredential}
+                    onClick={() => onTestCredential(testTransport)}
                   >
                     {testingCredential ? 'Testing…' : 'Test credential'}
                   </button>
@@ -940,7 +980,7 @@ function SelectedTargetPanel({
                     type="button"
                     className="discovery-btn discovery-btn-secondary discovery-btn-compact"
                     disabled={testingCredential}
-                    onClick={onTestCredential}
+                    onClick={() => onTestCredential(testTransport)}
                   >
                     {testingCredential ? 'Testing…' : 'Test credential'}
                   </button>
@@ -1080,66 +1120,39 @@ function DiscoveryExecutionPanel({
 }
 
 function resultBadgeClass(result: DiscoveryDeviceResultResponse) {
-  if (result.failure_code) {
-    const code = result.failure_code.toLowerCase()
-    if (code.includes('auth')) return 'discovery-result-authentication_failed'
-    if (code.includes('timeout') || code.includes('timed_out')) {
-      return 'discovery-result-timeout'
-    }
-    return 'discovery-result-failed'
-  }
-
-  const state = (result.state || '').toLowerCase()
-  if (state.includes('fail')) return 'discovery-result-failed'
-  if (state.includes('timeout') || state.includes('timed_out')) {
-    return 'discovery-result-timeout'
-  }
-
-  return 'discovery-result-discovered'
+  return `discovery-result-${resultState(result) || 'failed'}`
 }
 
 function resultBadgeLabel(result: DiscoveryDeviceResultResponse) {
-  if (result.failure_code) {
-    const code = result.failure_code.toLowerCase()
-    if (code.includes('auth')) return 'Authentication failed'
-    if (code.includes('timeout')) return 'Timeout'
-    return result.failure_code.replaceAll('_', ' ')
-  }
-
-  if (result.state) {
-    return result.state.replaceAll('_', ' ')
-  }
-
-  return 'Discovered'
+  const state = resultState(result)
+  return state ? state.replaceAll('_', ' ') : 'Unknown'
 }
 
 function DiscoveryResultsPanel({
   deviceResults,
   evidence,
+  summary,
+  attempts,
+  onLoadAttempts,
 }: {
   deviceResults: DiscoveryDeviceResultResponse[]
   evidence: DiscoveryEvidenceResponse[]
+  summary: DiscoveryRunSummaryResponse | null
+  attempts: Record<string, DiscoveryTransportAttemptResponse[]>
+  onLoadAttempts: (resultId: string) => Promise<void>
 }) {
   if (deviceResults.length === 0 && evidence.length === 0) {
     return null
   }
 
-  const discoveredCount = deviceResults.filter(
-    (d) => d.state === 'succeeded'
-  ).length
-  const scannedCount = deviceResults.length
-  const unavailableCount = deviceResults.filter(
-    (d) => d.state === 'failed'
-  ).length
-
-  const summarySuffix =
-    scannedCount > 1
-      ? ` (${scannedCount} addresses scanned${
-          unavailableCount > 0 ? `, ${unavailableCount} unavailable` : ''
-        })`
-      : scannedCount === 1 && unavailableCount === 1
-        ? ' (1 address scanned, 1 unavailable)'
-        : ''
+  const scannedCount = summary?.total_scanned ?? deviceResults.length
+  const categoryCounts = [
+    ['Discovered', summary?.total_discovered],
+    ['Partial discovery', summary?.total_partial_discovery],
+    ['Authentication failed', summary?.total_authentication_failed],
+    ['Reachable / no management', summary?.total_reachable_no_management],
+    ['Host unreachable', summary?.total_unreachable],
+  ]
 
   return (
     <section className="discovery-panel discovery-results">
@@ -1147,9 +1160,13 @@ function DiscoveryResultsPanel({
         <div>
           <h2>Discovery results</h2>
           <p className="discovery-results-summary">
-            {discoveredCount} device{discoveredCount !== 1 ? 's' : ''} discovered
-            {summarySuffix}
+            {scannedCount} addresses scanned
           </p>
+          <div className="discovery-results-counts">
+            {categoryCounts.map(([label, count]) => (
+              <span key={label}>{label}: {count ?? 0}</span>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1166,6 +1183,7 @@ function DiscoveryResultsPanel({
                 <th>State</th>
                 <th>Transport</th>
                 <th>Result</th>
+                <th>Transport attempts</th>
               </tr>
             </thead>
             <tbody>
@@ -1190,6 +1208,29 @@ function DiscoveryResultsPanel({
                     >
                       {resultBadgeLabel(result)}
                     </span>
+                    <small className="discovery-result-message">
+                      {resultStateMessages[resultState(result)] || result.failure_message || ''}
+                    </small>
+                  </td>
+                  <td>
+                    <details onToggle={(event) => {
+                      if (event.currentTarget.open && !attempts[result.result_id]) {
+                        void onLoadAttempts(result.result_id)
+                      }
+                    }}>
+                      <summary>Attempts</summary>
+                      {attempts[result.result_id] ? (
+                        <ol className="discovery-attempt-list">
+                          {attempts[result.result_id].map((attempt) => (
+                            <li key={attempt.attempt_id}>
+                              {formatTransport(attempt.transport)}: {attempt.result}
+                              {attempt.failure_code ? ` · ${attempt.failure_code}` : ''}
+                              {attempt.duration_ms != null ? ` · ${attempt.duration_ms} ms` : ''}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : <span>Loading…</span>}
+                    </details>
                   </td>
                 </tr>
               ))}
@@ -1242,6 +1283,9 @@ function AddTargetModal({
     credential_profile_id: string
     platform_hint: string
     preferred_transport: string
+    allowed_fallback_transports: string[]
+    allow_insecure_telnet: boolean
+    allow_insecure_http: boolean
   }
   profiles: CredentialProfileResponse[]
   saving: boolean
@@ -1394,12 +1438,64 @@ function AddTargetModal({
                       })
                     }
                   >
-                    <option value="netmiko">SSH / Netmiko</option>
-                    <option value="snmp">SNMP</option>
-                    <option value="http">HTTP</option>
+                    {supportedTransports.map((transport) => (
+                      <option key={transport} value={transport}>
+                        {formatTransport(transport)}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
+            </div>
+
+            <div className="discovery-form-section">
+              <h3>Management / Transport</h3>
+              <p className="muted">Fallbacks run in the order shown.</p>
+              <div className="discovery-transport-chips">
+                {supportedTransports
+                  .filter((transport) => transport !== form.preferred_transport)
+                  .map((transport) => {
+                    const index = form.allowed_fallback_transports.indexOf(transport)
+                    const selected = index >= 0
+                    return (
+                      <button
+                        key={transport}
+                        type="button"
+                        className={`discovery-transport-chip ${selected ? 'discovery-transport-chip-selected' : ''}`}
+                        onClick={() => {
+                          const next = selected
+                            ? form.allowed_fallback_transports.filter((item) => item !== transport)
+                            : [...form.allowed_fallback_transports, transport]
+                          onChange({ allowed_fallback_transports: next })
+                        }}
+                      >
+                        {selected ? `${index + 1}. ` : ''}{formatTransport(transport)}
+                      </button>
+                    )
+                  })}
+              </div>
+              <label className="discovery-check-row">
+                <input
+                  type="checkbox"
+                  checked={form.allow_insecure_telnet}
+                  onChange={(event) => onChange({ allow_insecure_telnet: event.target.checked })}
+                />
+                Allow insecure Telnet
+              </label>
+              <label className="discovery-check-row">
+                <input
+                  type="checkbox"
+                  checked={form.allow_insecure_http}
+                  onChange={(event) => onChange({ allow_insecure_http: event.target.checked })}
+                />
+                Allow insecure HTTP
+              </label>
+              {form.allowed_fallback_transports.includes('telnet') && !form.allow_insecure_telnet ? (
+                <p className="discovery-inline-error" role="alert">Telnet requires explicit insecure access.</p>
+              ) : null}
+              {form.allowed_fallback_transports.includes('http') && !form.allow_insecure_http ? (
+                <p className="discovery-inline-error" role="alert">HTTP requires explicit insecure access.</p>
+              ) : null}
             </div>
 
             <div className="discovery-form-section">
@@ -1718,6 +1814,11 @@ export function DiscoveryPage() {
   const [deviceResults, setDeviceResults] = useState<
     DiscoveryDeviceResultResponse[]
   >([])
+  const [runSummary, setRunSummary] =
+    useState<DiscoveryRunSummaryResponse | null>(null)
+  const [attempts, setAttempts] = useState<
+    Record<string, DiscoveryTransportAttemptResponse[]>
+  >({})
   const [loading, setLoading] = useState(true)
   const [savingTarget, setSavingTarget] = useState(false)
   const [creatingProfile, setCreatingProfile] = useState(false)
@@ -1739,7 +1840,10 @@ export function DiscoveryPage() {
     scope_cidr: '',
     credential_profile_id: '',
     platform_hint: 'cisco-iosxe',
-    preferred_transport: 'netmiko',
+    preferred_transport: 'ssh',
+    allowed_fallback_transports: [] as string[],
+    allow_insecure_telnet: false,
+    allow_insecure_http: false,
   })
 
   const [profileForm, setProfileForm] = useState({
@@ -1843,6 +1947,9 @@ export function DiscoveryPage() {
         setJob(loadedJob)
         setSelectedTargetId(loadedJob.target_id)
         setDeviceResults(loadedDevices)
+        if (loadedJob.discovery_run_id) {
+          setRunSummary(await getDiscoveryRunSummary(loadedJob.discovery_run_id))
+        }
         try {
           const loadedEvidence = await getDiscoveryEvidence(loadedJob.job_id)
           if (!disposed) setEvidence(loadedEvidence)
@@ -1882,6 +1989,9 @@ export function DiscoveryPage() {
         setJob(updated)
 
         setDeviceResults(await getDiscoveryDeviceResults(updated.job_id))
+        if (updated.discovery_run_id) {
+          setRunSummary(await getDiscoveryRunSummary(updated.discovery_run_id))
+        }
 
         if (terminalStates.has(updated.status)) {
           setEvidence(await getDiscoveryEvidence(updated.job_id))
@@ -1923,7 +2033,9 @@ export function DiscoveryPage() {
         tenant_id: tenantId,
         enabled: true,
         credential_references: {},
-        allowed_fallback_transports: ['snmp', 'http'],
+        allowed_fallback_transports: targetForm.allowed_fallback_transports,
+        allow_insecure_telnet: targetForm.allow_insecure_telnet,
+        allow_insecure_http: targetForm.allow_insecure_http,
         metadata: {},
       })
 
@@ -1939,7 +2051,10 @@ export function DiscoveryPage() {
         scope_cidr: '',
         credential_profile_id: created.credential_profile_id || '',
         platform_hint: 'cisco-iosxe',
-        preferred_transport: 'netmiko',
+        preferred_transport: 'ssh',
+        allowed_fallback_transports: [],
+        allow_insecure_telnet: false,
+        allow_insecure_http: false,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create target.')
@@ -2016,7 +2131,10 @@ export function DiscoveryPage() {
     }
   }
 
-  async function handleTestSelectedProfile(profileId?: string) {
+  async function handleTestSelectedProfile(
+    profileId?: string,
+    requestedTransport?: string,
+  ) {
     const targetProfileId =
       profileId ||
       selectedTarget?.credential_profile_id ||
@@ -2031,7 +2149,7 @@ export function DiscoveryPage() {
     const profile =
       profiles.find((item) => item.profile_id === targetProfileId) || null
 
-    const transport = profile?.transport_types[0] || 'ssh'
+    const transport = requestedTransport || profile?.transport_types[0] || 'ssh'
 
     setTestingCredential(true)
     setError(null)
@@ -2061,6 +2179,8 @@ export function DiscoveryPage() {
     setError(null)
     setEvidence([])
     setDeviceResults([])
+    setRunSummary(null)
+    setAttempts({})
 
     try {
       const created = await createDiscoveryApiJob({
@@ -2167,8 +2287,8 @@ export function DiscoveryPage() {
           profileTestResult={profileTestResult}
           testingCredential={testingCredential}
           savingTargetProfile={savingTargetProfile}
-          onTestCredential={() =>
-            void handleTestSelectedProfile(selectedProfile?.profile_id)
+          onTestCredential={(transport) =>
+            void handleTestSelectedProfile(selectedProfile?.profile_id, transport)
           }
           onManageProfiles={() => setShowProfileComposer(true)}
           onSaveTargetProfile={handleSaveTargetProfile}
@@ -2185,6 +2305,15 @@ export function DiscoveryPage() {
       <DiscoveryResultsPanel
         deviceResults={deviceResults}
         evidence={evidence}
+        summary={runSummary}
+        attempts={attempts}
+        onLoadAttempts={async (resultId) => {
+          const loadedAttempts = await getDiscoveryTransportAttempts(resultId)
+          setAttempts((current) => ({
+            ...current,
+            [resultId]: loadedAttempts,
+          }))
+        }}
       />
 
       {showAddTargetModal ? (

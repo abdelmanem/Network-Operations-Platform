@@ -75,6 +75,12 @@ export interface DiscoveryRunSummaryResponse {
   created_at: string
   started_at: string | null
   finished_at: string | null
+  total_scanned: number | null
+  total_discovered: number | null
+  total_unreachable: number | null
+  total_reachable_no_management: number | null
+  total_authentication_failed: number | null
+  total_partial_discovery: number | null
 }
 
 export interface DiscoveryRunListResponse {
@@ -119,6 +125,8 @@ export interface DiscoveryTargetRequest {
   enabled: boolean
   credential_reference?: string | null
   credential_profile_id: string
+  allow_insecure_telnet?: boolean
+  allow_insecure_http?: boolean
   credential_references?: Record<string, string>
   allowed_fallback_transports?: string[]
   metadata: Record<string, unknown>
@@ -136,6 +144,9 @@ export interface DiscoveryTargetResponse {
   credential_profile_id: string | null
   platform_hint: string | null
   preferred_transport: string | null
+  allowed_fallback_transports?: string[]
+  allow_insecure_telnet?: boolean
+  allow_insecure_http?: boolean
   enabled: boolean
   created_at: string
   updated_at: string
@@ -146,6 +157,9 @@ export interface DiscoveryTargetUpdateRequest {
   preferred_transport?: string | null
   platform_hint?: string | null
   enabled?: boolean | null
+  allowed_fallback_transports?: string[]
+  allow_insecure_telnet?: boolean
+  allow_insecure_http?: boolean
 }
 
 
@@ -271,10 +285,24 @@ export interface DiscoveryDeviceResultResponse {
   model: string | null
   platform: string | null
   state: string
+  result_state?: string | null
   selected_transport: string | null
   failure_code: string | null
   failure_message: string | null
   started_at: string | null
+  completed_at: string | null
+  correlation_id: string | null
+}
+
+export interface DiscoveryTransportAttemptResponse {
+  attempt_id: string
+  transport: string
+  attempt_order: number
+  result: string
+  failure_code: string | null
+  failure_message?: string | null
+  duration_ms: number | null
+  started_at: string
   completed_at: string | null
   correlation_id: string | null
 }

@@ -15,6 +15,8 @@ import type {
   DiscoveryTargetRequest,
   DiscoveryTargetResponse,
   DiscoveryTargetUpdateRequest,
+  DiscoveryTransportAttemptResponse,
+  DiscoveryRunSummaryResponse,
 } from '../types/api'
 import { api, normalizeApiError } from './client'
 
@@ -232,6 +234,32 @@ export async function getDiscoveryDeviceResults(
   try {
     const response = await api.get<DiscoveryDeviceResultResponse[]>(
       `/api/v1/discovery/jobs/${jobId}/devices`,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function getDiscoveryRunSummary(
+  runId: string,
+): Promise<DiscoveryRunSummaryResponse> {
+  try {
+    const response = await api.get<DiscoveryRunSummaryResponse>(
+      `/api/v1/discovery/runs/${runId}`,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function getDiscoveryTransportAttempts(
+  resultId: string,
+): Promise<DiscoveryTransportAttemptResponse[]> {
+  try {
+    const response = await api.get<DiscoveryTransportAttemptResponse[]>(
+      `/api/v1/discovery/devices/${resultId}/attempts`,
     )
     return response.data
   } catch (error) {

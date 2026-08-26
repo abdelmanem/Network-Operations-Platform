@@ -132,6 +132,9 @@ class DiscoveryTargetUpdateRequest(BaseModel):
     preferred_transport: str | None = Field(default=None, max_length=64)
     platform_hint: str | None = Field(default=None, max_length=128)
     enabled: bool | None = None
+    allowed_fallback_transports: list[str] | None = None
+    allow_insecure_telnet: bool | None = None
+    allow_insecure_http: bool | None = None
 
     @field_validator("platform_hint")
     @classmethod

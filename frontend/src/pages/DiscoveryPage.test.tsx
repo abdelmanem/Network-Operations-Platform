@@ -10,6 +10,8 @@ const {
   getJob,
   getDeviceResults,
   getEvidence,
+  getRunSummary,
+  getTransportAttempts,
   createCredentialProfile,
   testCredentialProfile,
   updateTarget,
@@ -22,6 +24,8 @@ const {
   getJob: vi.fn(),
   getDeviceResults: vi.fn(),
   getEvidence: vi.fn(),
+  getRunSummary: vi.fn(),
+  getTransportAttempts: vi.fn(),
   createCredentialProfile: vi.fn(),
   testCredentialProfile: vi.fn(),
 }))
@@ -35,6 +39,8 @@ vi.mock('../api/discovery', () => ({
   getDiscoveryApiJob: getJob,
   getDiscoveryDeviceResults: getDeviceResults,
   getDiscoveryEvidence: getEvidence,
+  getDiscoveryRunSummary: getRunSummary,
+  getDiscoveryTransportAttempts: getTransportAttempts,
   createDiscoveryCredentialProfile: createCredentialProfile,
   testDiscoveryCredentialProfile: testCredentialProfile,
 }))
@@ -50,9 +56,13 @@ describe('DiscoveryPage', () => {
     getJob.mockReset()
     getDeviceResults.mockReset()
     getEvidence.mockReset()
+    getRunSummary.mockReset()
+    getTransportAttempts.mockReset()
     createCredentialProfile.mockReset()
     testCredentialProfile.mockReset()
     updateTarget.mockReset()
+    getRunSummary.mockResolvedValue(null)
+    getTransportAttempts.mockResolvedValue([])
   })
 
   it('renders a credential-profile empty state and allows creation from the discovery workflow', async () => {
@@ -357,9 +367,11 @@ describe('DiscoveryPage', () => {
         scope_cidr: null,
         credential_profile_id: 'profile-cisco-ssh',
         credential_references: {},
-        allowed_fallback_transports: ['snmp', 'http'],
+        allowed_fallback_transports: [],
+        allow_insecure_telnet: false,
+        allow_insecure_http: false,
         platform_hint: 'cisco-iosxe',
-        preferred_transport: 'netmiko',
+        preferred_transport: 'ssh',
         tenant_id: 'default',
         enabled: true,
         metadata: {},
@@ -479,7 +491,7 @@ describe('DiscoveryPage', () => {
       { timeout: 3000 },
     )
     expect(screen.getByText('catalyst-2960')).toBeInTheDocument()
-    expect(screen.getByText('1 device discovered')).toBeInTheDocument()
+    expect(screen.getByText('1 addresses scanned')).toBeInTheDocument()
   })
 
   it('displays accurate summary for CIDR discovery with succeeded and unavailable addresses', async () => {
@@ -554,6 +566,7 @@ describe('DiscoveryPage', () => {
         started_at: '2026-08-19T10:00:00Z',
         completed_at: '2026-08-19T10:00:01Z',
         correlation_id: null,
+        result_state: 'discovered',
       })),
       ...Array.from({ length: 245 }, (_, i) => ({
         result_id: `res-fail-${i}`,
@@ -569,11 +582,28 @@ describe('DiscoveryPage', () => {
         started_at: '2026-08-19T10:00:00Z',
         completed_at: '2026-08-19T10:00:01Z',
         correlation_id: null,
+        result_state: 'unreachable',
       })),
     ]
 
     getDeviceResults.mockResolvedValue(mockDeviceResults)
     getEvidence.mockResolvedValue([])
+    getRunSummary.mockResolvedValue({
+      id: 'run-cidr-1',
+      target_identifier: 'Cisco SW 40',
+      target_address: '192.168.40.0/24',
+      status: 'completed',
+      metadata: {},
+      created_at: '2026-08-19T10:00:00Z',
+      started_at: '2026-08-19T10:00:00Z',
+      finished_at: '2026-08-19T10:00:25Z',
+      total_scanned: 254,
+      total_discovered: 9,
+      total_unreachable: 245,
+      total_reachable_no_management: 0,
+      total_authentication_failed: 0,
+      total_partial_discovery: 0,
+    })
 
     render(
       <MemoryRouter>
@@ -593,10 +623,10 @@ describe('DiscoveryPage', () => {
     await waitFor(
       () => {
         expect(
-          screen.getByText(
-            '9 devices discovered (254 addresses scanned, 245 unavailable)',
-          ),
+          screen.getByText('254 addresses scanned'),
         ).toBeInTheDocument()
+        expect(screen.getByText('Discovered: 9')).toBeInTheDocument()
+        expect(screen.getByText('Host unreachable: 245')).toBeInTheDocument()
       },
       { timeout: 3000 },
     )

@@ -180,6 +180,12 @@ def update_target(
         changes["platform_hint"] = payload.platform_hint
     if payload.preferred_transport is not None:
         changes["preferred_transport"] = payload.preferred_transport
+    if payload.allowed_fallback_transports is not None:
+        changes["allowed_fallback_transports"] = payload.allowed_fallback_transports
+    if payload.allow_insecure_telnet is not None:
+        changes["allow_insecure_telnet"] = payload.allow_insecure_telnet
+    if payload.allow_insecure_http is not None:
+        changes["allow_insecure_http"] = payload.allow_insecure_http
 
     if payload.credential_profile_id is not None:
         try:
