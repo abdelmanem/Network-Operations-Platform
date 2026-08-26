@@ -114,7 +114,19 @@ def upgrade() -> None:
             sa.Boolean,
             nullable=False,
             default=False,
+            server_default=sa.false(),
             comment="Whether to allow Telnet (insecure) for this target",
+        ),
+    )
+
+    op.add_column(
+        "discovery_targets",
+        sa.Column(
+            "allow_insecure_http",
+            sa.Boolean,
+            nullable=False,
+            server_default=sa.false(),
+            comment="Whether to allow HTTP (insecure) for this target",
         ),
     )
 
@@ -138,6 +150,7 @@ def downgrade() -> None:
     # Drop indexes
     op.drop_index("idx_discovery_device_results_job_state", "discovery_device_results")
     op.drop_index("idx_discovery_device_results_state", "discovery_device_results")
+    op.drop_column("discovery_targets", "allow_insecure_http")
 
     # Drop columns from discovery_targets
     op.drop_column("discovery_targets", "allow_insecure_telnet")

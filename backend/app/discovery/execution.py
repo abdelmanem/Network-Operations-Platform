@@ -51,6 +51,7 @@ from backend.app.persistence.models import (
 from backend.app.persistence.repositories import SnapshotRepository
 from backend.app.snapshot.mapper import SnapshotMapper
 from backend.app.transports.secret_errors import SecretProviderError
+from backend.app.transports.base import TransportCapability
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +123,7 @@ class DiscoveryExecutionService:
 
         target_metadata = dict(target_view.metadata)
         allow_insecure = bool(target_metadata.get("allow_insecure_telnet", False))
+        allow_insecure_http = bool(target_metadata.get("allow_insecure_http", False))
 
         profile_id_raw = target_metadata.get("credential_profile_id")
         if profile_id_raw:
@@ -139,6 +141,7 @@ class DiscoveryExecutionService:
             policy = MultiTransportPolicy.from_credential_profile(
                 profile,
                 allow_insecure=allow_insecure,
+                allow_insecure_http=allow_insecure_http,
             )
             if not policy.transports:
                 transport_names = ["ssh"]
@@ -146,7 +149,17 @@ class DiscoveryExecutionService:
                 transport_names = [
                     t.transport_name
                     for t in policy.transports
-                    if not t.is_insecure or allow_insecure
+                    if (
+                        not t.is_insecure
+                        or (
+                            t.capability == TransportCapability.TELNET
+                            and allow_insecure
+                        )
+                        or (
+                            t.capability == TransportCapability.HTTP
+                            and allow_insecure_http
+                        )
+                    )
                 ]
                 if not transport_names:
                     transport_names = ["ssh"]
@@ -154,7 +167,8 @@ class DiscoveryExecutionService:
             transport_names = ["ssh"]
 
         # Also consider target-level fallback transports for backward compat
-        fallback = list(target_metadata.get("allowed_fallback_transports") or [])
+        raw_fallback = target_metadata.get("allowed_fallback_transports")
+        fallback = list(raw_fallback) if isinstance(raw_fallback, list) else []
         if fallback:
             for t in fallback:
                 if t not in transport_names:
@@ -170,14 +184,17 @@ class DiscoveryExecutionService:
                 seen.add(name)
                 ordered.append(name)
 
+        preferred = target_metadata.get("transport_name")
+        if isinstance(preferred, str) and preferred.lower() in ordered:
+            ordered.remove(preferred.lower())
+            ordered.insert(0, preferred.lower())
+
         from backend.app.discovery.transport_policy import (
             CAPABILITY_TO_SERVICE,
             CREDENTIAL_TYPE_COMPATIBILITY,
             INSECURE_TRANSPORTS,
             TransportPolicyEntry,
         )
-        from backend.app.transports.base import TransportCapability
-
         profile_credential_type = (
             profile.credential_type if profile is not None else None
         )
@@ -215,6 +232,7 @@ class DiscoveryExecutionService:
         return MultiTransportPolicy(
             transports=tuple(entries),
             allow_insecure=allow_insecure,
+            allow_insecure_http=allow_insecure_http,
             credential_profile_id=str(profile.id) if profile and profile.id else None,
         )
 
@@ -247,7 +265,13 @@ class DiscoveryExecutionService:
                     )
                     continue
 
-                if entry.is_insecure and not policy.allow_insecure:
+                if (
+                    entry.capability == TransportCapability.TELNET
+                    and not policy.allow_insecure
+                ) or (
+                    entry.capability == TransportCapability.HTTP
+                    and not policy.allow_insecure_http
+                ):
                     continue
 
                 tname_lower = entry.transport_name.lower()
@@ -374,22 +398,8 @@ class DiscoveryExecutionService:
         # 1. Resolve transport policy
         policy = self._resolve_transport_policy(target)
 
-        # 2. Build attempt configs in priority order
-        transport_configs = self._build_transport_configs(
-            job,
-            target,
-            policy,
-            parent_job_id=parent_job_id,
-            lease_lost=lease_lost,
-        )
-
-        if not transport_configs:
-            raise DiscoveryExecutionFailureError(
-                DiscoveryFailureCode.UNSUPPORTED_CAPABILITY,
-                "No transport configurations available for the credential profile.",
-            )
-
-        # 3. Resolve device_result record to associate attempts with
+        # 2. Resolve device_result before building configs so skipped transports
+        # can still produce an auditable unsupported-credential record.
         device_result = self.session.scalar(
             select(DiscoveryDeviceResultRecord).where(
                 DiscoveryDeviceResultRecord.child_job_id == job.id,
@@ -413,6 +423,22 @@ class DiscoveryExecutionService:
             device_result.started_at = result_started
             self.session.flush()
 
+        # 3. Build attempt configs in priority order
+        transport_configs = self._build_transport_configs(
+            job,
+            target,
+            policy,
+            parent_job_id=parent_job_id,
+            lease_lost=lease_lost,
+        )
+
+        if not transport_configs:
+            self.session.commit()
+            raise DiscoveryExecutionFailureError(
+                DiscoveryFailureCode.UNSUPPORTED_CAPABILITY,
+                "No transport configurations available for the credential profile.",
+            )
+
         # 4. Run orchestrator with fallback
         mt_result = await self.orchestrator.discover_with_fallback(
             address=target.address,
@@ -421,6 +447,8 @@ class DiscoveryExecutionService:
             device_result=device_result,
             probe_services=False,
         )
+        # Attempt history is audit evidence and must survive terminal job rollback.
+        self.session.commit()
 
         # 5. Persist result_state and state onto device_result
         result_state_value = mt_result.result_state.value
@@ -563,6 +591,13 @@ class DiscoveryExecutionService:
             failure_code=failure_code.value,
             failure_message=failure_message,
         )
+        self._ensure_device_result_for_failure(
+            job=job,
+            target=target,
+            failure_code=failure_code,
+            failure_message=failure_message,
+            selected_transport=selected_transport,
+        )
         self.session.commit()
         return DiscoveryExecutionOutcome(job=failed, executed=True)
 
@@ -696,7 +731,7 @@ class DiscoveryExecutionService:
                 selected_transport=self._payload_string(
                     raw_payload, "transport", target.metadata.get("transport_name")
                 ),
-                result_state="DISCOVERED",
+                result_state=DiscoveryResultState.DISCOVERED.value,
             )
             _check_cancellation()
             completed = self.jobs.transition(
@@ -858,6 +893,10 @@ class DiscoveryExecutionService:
         metadata["credential_profile_id"] = target.credential_profile_id
         metadata["allow_insecure_telnet"] = bool(
             getattr(target, "allow_insecure_telnet", False)
+        )
+        metadata["allow_insecure_http"] = bool(
+            metadata.get("allow_insecure_http", False)
+            or getattr(target, "allow_insecure_http", False)
         )
         metadata.setdefault(
             "allowed_fallback_transports",

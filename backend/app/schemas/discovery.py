@@ -35,6 +35,7 @@ class DiscoveryTargetRequest(BaseModel):
     credential_references: dict[str, str] = Field(default_factory=dict)
     allowed_fallback_transports: list[str] = Field(default_factory=list)
     allow_insecure_telnet: bool = False
+    allow_insecure_http: bool = False
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @field_validator("identifier", "tenant_id")
@@ -64,6 +65,14 @@ class DiscoveryTargetRequest(BaseModel):
         if uses_telnet and not self.allow_insecure_telnet:
             raise ValueError(
                 "Telnet is insecure. Set allow_insecure_telnet=true to explicitly enable."
+            )
+        uses_http = (
+            (self.preferred_transport and self.preferred_transport.lower() == "http")
+            or "http" in {t.lower() for t in self.allowed_fallback_transports}
+        )
+        if uses_http and not self.allow_insecure_http:
+            raise ValueError(
+                "HTTP is insecure. Set allow_insecure_http=true to explicitly enable."
             )
         return self
 
@@ -179,6 +188,7 @@ class DiscoveryTargetResponse(BaseModel):
     preferred_transport: str | None = None
     allowed_fallback_transports: list[str] = Field(default_factory=list)
     allow_insecure_telnet: bool = False
+    allow_insecure_http: bool = False
     credential_references: list[str] = Field(default_factory=list)
     credential_profile_id: str | None = None
     enabled: bool

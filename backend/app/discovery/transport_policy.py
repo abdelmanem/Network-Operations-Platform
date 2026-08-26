@@ -43,12 +43,14 @@ CAPABILITY_TO_SERVICE: dict[TransportCapability, TransportService] = {
 }
 
 # Transports considered insecure and requiring explicit opt-in
-INSECURE_TRANSPORTS: frozenset[TransportCapability] = frozenset({TransportCapability.TELNET})
+INSECURE_TRANSPORTS: frozenset[TransportCapability] = frozenset(
+    {TransportCapability.TELNET, TransportCapability.HTTP}
+)
 
 # Credential type compatibility mapping
 # Defines which credential types can be used with which transports
 CREDENTIAL_TYPE_COMPATIBILITY: dict[str, list[str]] = {
-    "ssh_password": ["ssh", "telnet"],
+    "ssh_password": ["ssh", "telnet", "http", "https"],
     "ssh_key": ["ssh"],
     "telnet_password": ["telnet"],
     "snmp_v2c": ["snmp"],
@@ -84,13 +86,22 @@ class MultiTransportPolicy:
 
     transports: tuple[TransportPolicyEntry, ...]
     allow_insecure: bool = False
+    allow_insecure_http: bool = False
     credential_profile_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate that insecure transports are only used when explicitly allowed."""
-        if not self.allow_insecure:
+        if not self.allow_insecure or not self.allow_insecure_http:
             insecure_in_policy = [
-                t for t in self.transports if t.is_insecure
+                t
+                for t in self.transports
+                if t.is_insecure
+                and (
+                    t.capability == TransportCapability.TELNET
+                    and not self.allow_insecure
+                    or t.capability == TransportCapability.HTTP
+                    and not self.allow_insecure_http
+                )
             ]
             if insecure_in_policy:
                 raise ValueError(
@@ -141,6 +152,7 @@ class MultiTransportPolicy:
         profile: CredentialProfileRecord,
         *,
         allow_insecure: bool = False,
+        allow_insecure_http: bool = False,
     ) -> MultiTransportPolicy:
         """Construct a transport policy from a credential profile.
 
@@ -181,6 +193,15 @@ class MultiTransportPolicy:
             # Check if transport is insecure
             is_insecure = capability in INSECURE_TRANSPORTS
 
+            if (
+                capability == TransportCapability.TELNET
+                and not allow_insecure
+            ) or (
+                capability == TransportCapability.HTTP
+                and not allow_insecure_http
+            ):
+                continue
+
             # Check credential compatibility
             credential_compatible = True
             if credential_type:
@@ -209,6 +230,7 @@ class MultiTransportPolicy:
         return cls(
             transports=tuple(unique_transports),
             allow_insecure=allow_insecure,
+            allow_insecure_http=allow_insecure_http,
             credential_profile_id=str(profile.id) if profile.id else None,
         )
 

@@ -173,6 +173,9 @@ class DiscoveryTargetRecord(BaseModel):
     allow_insecure_telnet: Mapped[bool] = mapped_column(
         default=False, nullable=False
     )
+    allow_insecure_http: Mapped[bool] = mapped_column(
+        default=False, nullable=False
+    )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=dict, nullable=False
     )

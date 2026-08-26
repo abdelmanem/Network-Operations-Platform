@@ -178,6 +178,28 @@ class HttpsFailCollector(BaseCollector):
         return None
 
 
+class HttpSuccessCollector(BaseCollector):
+    async def health_check(self, context: CollectorContext) -> None:
+        await asyncio.sleep(0)
+
+    async def discover(self, context: CollectorContext):
+        return ()
+
+    async def collect(self, context: CollectorContext, *, discovered_targets):
+        return {
+            "hostname": context.target.identifier,
+            "transport": "http",
+            "platform_family": "cisco-iosxe",
+            "facts": {"serial": "HTTP-SERIAL-1"},
+        }
+
+    async def normalize(self, context, raw_payload, *, discovered_targets):
+        raise AssertionError("Must not normalize in unit tests")
+
+    async def close(self) -> None:
+        return None
+
+
 class SnmpCollector(BaseCollector):
     async def health_check(self, context: CollectorContext) -> None:
         await asyncio.sleep(0)
@@ -343,7 +365,9 @@ async def test_A_ssh_success_no_fallback_single_transport() -> None:
     result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
     assert result.result_state == DiscoveryResultState.DISCOVERED.value
     assert result.selected_transport == "ssh"
-    attempts = session.execute(select(DiscoveryTransportAttemptRecord)).all()
+    attempts = session.execute(
+        select(DiscoveryTransportAttemptRecord)
+    ).scalars().all()
     assert len(attempts) == 1
     assert attempts[0].transport == "ssh"
     assert attempts[0].attempt_order == 1
@@ -475,6 +499,68 @@ async def test_D_all_transports_fail_distinguish_reachable_vs_auth_failure() -> 
     )
     assert len(attempts) == 3
     assert attempts[0].failure_code == DiscoveryFailureCode.AUTHENTICATION_FAILED.value
+
+
+@pytest.mark.anyio
+async def test_D2_ssh_telnet_https_fail_then_http_succeeds() -> None:
+    session = _session()
+    profile = _credential_profile(
+        session, transport_types=["ssh", "telnet", "https", "http"]
+    )
+    job = _job_with_profile(session, profile=profile)
+    target = session.get(DiscoveryTargetRecord, job.target_id)
+    assert target is not None
+    target.metadata_json = {"allow_insecure_http": True}
+    session.commit()
+    registry = CollectorRegistry()
+    registry.register(
+        SshFailReachableCollector(
+            name="ssh-cisco", capabilities=frozenset({CollectorCapability.SSH})
+        )
+    )
+    registry.register(
+        TelnetFailCollector(
+            name="telnet-cisco", capabilities=frozenset({CollectorCapability.TELNET})
+        )
+    )
+    registry.register(
+        HttpsFailCollector(
+            name="https-cisco", capabilities=frozenset({CollectorCapability.HTTPS})
+        )
+    )
+    registry.register(
+        HttpSuccessCollector(
+            name="http-cisco", capabilities=frozenset({CollectorCapability.HTTP})
+        )
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.SUCCEEDED.value, (
+        outcome.job.failure_code,
+        outcome.job.failure_message,
+    )
+    result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
+    assert result.result_state == DiscoveryResultState.DISCOVERED.value
+    assert result.selected_transport == "http"
+    attempts = sorted(
+        session.execute(select(DiscoveryTransportAttemptRecord)).scalars().all(),
+        key=lambda attempt: attempt.attempt_order,
+    )
+    assert [attempt.transport for attempt in attempts] == [
+        "ssh",
+        "telnet",
+        "https",
+        "http",
+    ]
+    assert [attempt.result for attempt in attempts] == [
+        "failed",
+        "failed",
+        "failed",
+        "success",
+    ]
 
 
 @pytest.mark.anyio

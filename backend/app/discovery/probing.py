@@ -82,7 +82,7 @@ class ServiceProbeResult:
     error_message: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class HostProbeResult:
     """Combined probe results for a single host."""
 
@@ -154,7 +154,7 @@ class ServiceProber:
         # Process results
         any_reachable = False
         for service, probe_result in zip(services, probe_results):
-            if isinstance(probe_result, Exception):
+            if isinstance(probe_result, BaseException):
                 # Create failed result for exception case
                 failed_result = ServiceProbeResult(
                     service=service,
@@ -205,10 +205,10 @@ class ServiceProber:
 
         # Probe all hosts concurrently
         probe_tasks = [probe_single_host(address) for address in addresses]
-        probe_results = await asyncio.gather(probe_tasks, return_exceptions=True)
+        probe_results = await asyncio.gather(*probe_tasks, return_exceptions=True)
 
         for item in probe_results:
-            if isinstance(item, Exception):
+            if isinstance(item, BaseException):
                 # Log exception but continue with other results
                 continue
             address, result = item
@@ -329,15 +329,6 @@ class ServiceProber:
                 sock.close()
         except Exception:
             return False
-
-
-def get_service_for_capability(capability: TransportCapability) -> TransportService | None:
-    """Map a TransportCapability to its corresponding TransportService."""
-    capability_str = str(capability).upper()
-    service_name = CAPABILITY_TO_SERVICE.get(capability_str)
-    if service_name:
-        return service_name
-    return None
 
 
 def get_capabilities_from_services(

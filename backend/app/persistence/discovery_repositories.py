@@ -97,6 +97,7 @@ class DiscoveryTargetRepository:
         credential_references: Mapping[str, object] | None = None,
         allowed_fallback_transports: list[str] | None = None,
         allow_insecure_telnet: bool = False,
+        allow_insecure_http: bool = False,
         vendor: str | None = None,
         hostname: str | None = None,
         platform_hint: str | None = None,
@@ -129,6 +130,7 @@ class DiscoveryTargetRepository:
                 else list(allowed_fallback_transports)
             ),
             allow_insecure_telnet=bool(allow_insecure_telnet),
+            allow_insecure_http=bool(allow_insecure_http),
             metadata_json={} if metadata is None else dict(metadata),
             created_by=created_by,
         )
