@@ -158,12 +158,27 @@ def classify_transport_failure(
     if failure_code == DiscoveryFailureCode.TRANSPORT_UNAVAILABLE:
         return True, False, False
 
+    # Generic collector/parsing/discovery failures are not evidence of network
+    # unreachability; the host and management service were likely reachable but
+    # the actual collection workflow failed.
+    if failure_code in {
+        DiscoveryFailureCode.DISCOVERY_FAILED,
+        DiscoveryFailureCode.COLLECTOR_FAILED,
+        DiscoveryFailureCode.PARSER_FAILED,
+        DiscoveryFailureCode.NORMALIZATION_FAILED,
+        DiscoveryFailureCode.EVIDENCE_PERSISTENCE_FAILED,
+        DiscoveryFailureCode.SNAPSHOT_PERSISTENCE_FAILED,
+    }:
+        return True, False, True
+
     # Connection failed - could be various reasons
     if failure_code == DiscoveryFailureCode.CONNECTION_FAILED:
         return False, False, False
 
-    # Default - assume not reachable for unknown failures
-    return False, False, False
+    # Default - unknown failures are treated as reachable but not successfully
+    # managed until proven otherwise; this avoids false "host unreachable"
+    # classifications for application-level collector errors.
+    return True, False, True
 
 
 __all__ = [

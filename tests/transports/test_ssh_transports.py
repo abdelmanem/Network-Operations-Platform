@@ -86,6 +86,7 @@ def test_paramiko_transport_creates_authenticated_session(monkeypatch: object) -
         "backend.app.transports.ssh.paramiko._paramiko_module",
         lambda: SimpleNamespace(
             SSHClient=lambda: fake_client,
+            AutoAddPolicy=lambda: object(),
             RejectPolicy=lambda: object(),
         ),
     )
@@ -110,6 +111,53 @@ def test_paramiko_transport_creates_authenticated_session(monkeypatch: object) -
     asyncio.run(run())
     assert fake_client.connected is False
     assert fake_client.connect_attempts == 2
+
+
+def test_paramiko_transport_allows_unknown_host_keys_for_discovery(
+    monkeypatch: object,
+) -> None:
+    policy_seen: list[str] = []
+
+    class _FakeParamikoClient:
+        def set_missing_host_key_policy(self, policy: object) -> None:
+            policy_seen.append(type(policy).__name__)
+
+        def connect(self, **kwargs: object) -> None:
+            return None
+
+        def exec_command(self, command: str) -> tuple[object, _FakeStdout, _FakeStderr]:
+            return object(), _FakeStdout(), _FakeStderr()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "backend.app.transports.ssh.paramiko._paramiko_module",
+        lambda: SimpleNamespace(
+            SSHClient=lambda: _FakeParamikoClient(),
+            AutoAddPolicy=lambda: object(),
+            RejectPolicy=lambda: object(),
+        ),
+    )
+
+    transport = ParamikoSSHTransport()
+    context = TransportContext(
+        target=TransportTarget(identifier="switch-3", address="10.0.0.3"),
+        credentials=UsernamePasswordCredentials(
+            username="admin", password=SSH_PASSWORD
+        ),
+        retry_policy=TransportRetryPolicy(max_attempts=1),
+    )
+
+    session = transport.create_session(context)
+
+    async def run() -> None:
+        await session.open()
+        await session.execute("show version")
+        await session.close()
+
+    asyncio.run(run())
+    assert policy_seen == ["object"]
 
 
 def test_netmiko_transport_creates_session(monkeypatch: object) -> None:

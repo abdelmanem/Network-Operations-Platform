@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from backend.app.api.v1.dependencies import get_db_session as get_db_v1
@@ -27,9 +28,16 @@ from backend.app.persistence.discovery_repositories import (
     DiscoveryResourceNotFoundError,
     DiscoveryTargetRepository,
 )
+from backend.app.persistence.models import (
+    DiscoveryDeviceResultRecord,
+    DiscoveryEvidenceRecord,
+    DiscoveryJobRecord,
+    DiscoveryRunRecord,
+    DiscoveryTransportAttemptRecord,
+)
 from fastapi import status
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -335,6 +343,130 @@ def test_update_discovery_target_rbac_enforcement() -> None:
         )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
+    finally:
+        session.close()
+
+
+def test_delete_discovery_target_cleans_related_discovery_rows() -> None:
+    session = _build_test_session()
+    try:
+        client, headers, _ = _setup_app_and_client(session)
+
+        target_repo = DiscoveryTargetRepository(session)
+        target = target_repo.create(
+            tenant_id="tenant-a",
+            identifier="delete-me",
+            address="10.0.0.7",
+            credential_reference="env:DELETE_ME",
+        )
+
+        run = DiscoveryRunRecord(
+            target_identifier=target.identifier,
+            target_address=target.address,
+            tenant_id="tenant-a",
+            status="started",
+            metadata_json={},
+        )
+        session.add(run)
+        session.flush()
+
+        job = DiscoveryJobRecord(
+            tenant_id="tenant-a",
+            target_id=target.id,
+            run_id=run.id,
+            state="queued",
+            requested_capabilities={},
+        )
+        session.add(job)
+        session.flush()
+
+        device_result = DiscoveryDeviceResultRecord(
+            tenant_id="tenant-a",
+            discovery_job_id=job.id,
+            child_job_id=job.id,
+            address=target.address,
+            state="running",
+            correlation_id="corr-1",
+        )
+        session.add(device_result)
+        session.flush()
+
+        session.add(
+            DiscoveryTransportAttemptRecord(
+                tenant_id="tenant-a",
+                device_result_id=device_result.id,
+                transport="ssh",
+                attempt_order=1,
+                result="failed",
+                failure_code="CONNECTION_FAILED",
+                correlation_id="corr-1",
+            )
+        )
+
+        session.add(
+            DiscoveryEvidenceRecord(
+                tenant_id="tenant-a",
+                job_id=job.id,
+                target_id=target.id,
+                run_id=run.id,
+                evidence_type="device_inventory",
+                source=target.address,
+                observed_at=datetime.now(UTC),
+                payload={"device": target.address},
+                payload_hash="abc123",
+                collector="ssh",
+                command_or_probe="show version",
+                sequence=1,
+                collector_version="1.0",
+                parser_version="1.0",
+                normalization_version="1.0",
+            )
+        )
+        session.commit()
+
+        response = client.delete(
+            f"/api/v1/discovery/targets/{target.id}",
+            headers=headers,
+        )
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert target_repo.get(tenant_id="tenant-a", target_id=target.id) is None
+        assert session.scalar(
+            select(DiscoveryJobRecord.id).where(DiscoveryJobRecord.target_id == target.id)
+        ) is None
+    finally:
+        session.close()
+
+
+def test_bulk_delete_discovery_targets_removes_selected_targets() -> None:
+    session = _build_test_session()
+    try:
+        client, headers, _ = _setup_app_and_client(session)
+        repo = DiscoveryTargetRepository(session)
+
+        target_1 = repo.create(
+            tenant_id="tenant-a",
+            identifier="bulk-delete-1",
+            address="10.0.0.21",
+            credential_reference="env:BULK_1",
+        )
+        target_2 = repo.create(
+            tenant_id="tenant-a",
+            identifier="bulk-delete-2",
+            address="10.0.0.22",
+            credential_reference="env:BULK_2",
+        )
+        session.commit()
+
+        response = client.request(
+            "DELETE",
+            "/api/v1/discovery/targets",
+            json={"target_ids": [str(target_1.id), str(target_2.id)]},
+            headers=headers,
+        )
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert repo.list(tenant_id="tenant-a") == ()
     finally:
         session.close()
 

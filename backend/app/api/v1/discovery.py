@@ -63,6 +63,7 @@ from backend.app.schemas.discovery import (
     DiscoveryJobRequest,
     DiscoveryJobResponse,
     DiscoveryRunSummary,
+    DiscoveryTargetBulkDeleteRequest,
     DiscoveryTargetRequest,
     DiscoveryTargetResponse,
     DiscoveryTargetUpdateRequest,
@@ -106,6 +107,33 @@ def create_target(
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Credential profile was not found.",
+            )
+        profile_transports = {str(item).lower() for item in (profile.transport_types or [])}
+        preferred = (payload.preferred_transport or "ssh").lower()
+        if preferred in {"netmiko", "paramiko"}:
+            preferred = "ssh"
+        elif preferred == "pysnmp":
+            preferred = "snmp"
+        elif preferred == "httpx":
+            preferred = "http"
+        if preferred not in profile_transports:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Credential profile does not support target transport '{payload.preferred_transport or 'ssh'}'.",
+            )
+        unsupported_fallbacks = [
+            fallback
+            for fallback in (payload.allowed_fallback_transports or [])
+            if str(fallback).lower() not in profile_transports
+        ]
+        if unsupported_fallbacks:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Credential profile does not support fallback transports: "
+                    + ", ".join(sorted({str(item).lower() for item in unsupported_fallbacks}))
+                    + "."
+                ),
             )
         credential_reference = profile.provider_reference
     try:
@@ -153,6 +181,67 @@ def list_targets(
     ]
 
 
+@router.delete(
+    "/targets",
+    status_code=http_status.HTTP_204_NO_CONTENT,
+    summary="Delete one or more discovery targets",
+)
+def delete_targets(
+    payload: DiscoveryTargetBulkDeleteRequest,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:target:write"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> None:
+    if not payload.target_ids:
+        return
+
+    repo = DiscoveryTargetRepository(db_session)
+    deleted_any = False
+    for target_id in payload.target_ids:
+        try:
+            target_uuid = UUID(target_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid target identifier: {target_id}",
+            ) from None
+
+        deleted = repo.delete(tenant_id=tenant_id, target_id=target_uuid)
+        if deleted:
+            deleted_any = True
+
+    if not deleted_any:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="No discovery targets were found for deletion.",
+        )
+
+    db_session.commit()
+
+
+@router.delete(
+    "/targets/{target_id}",
+    status_code=http_status.HTTP_204_NO_CONTENT,
+    summary="Delete a discovery target",
+)
+def delete_target(
+    target_id: UUID,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:target:write"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> None:
+    deleted = DiscoveryTargetRepository(db_session).delete(
+        tenant_id=tenant_id,
+        target_id=target_id,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Discovery target was not found.",
+        )
+    db_session.commit()
+
+
 @router.patch(
     "/targets/{target_id}",
     response_model=DiscoveryTargetResponse,
@@ -187,7 +276,10 @@ def update_target(
     if payload.allow_insecure_http is not None:
         changes["allow_insecure_http"] = payload.allow_insecure_http
 
-    if payload.credential_profile_id is not None:
+    if "credential_profile_id" in payload.model_fields_set and payload.credential_profile_id is None:
+        changes["credential_profile_id"] = None
+        changes["credential_reference"] = ""
+    elif payload.credential_profile_id is not None:
         try:
             profile_uuid = UUID(payload.credential_profile_id)
         except ValueError:

@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   createDiscoveryApiJob,
   createDiscoveryCredentialProfile,
   createDiscoveryTarget,
+  deleteDiscoveryCredentialProfile,
+  deleteDiscoveryTarget,
+  deleteDiscoveryTargets,
   getDiscoveryApiJob,
+  getDiscoveryCredentialProfile,
   getDiscoveryEvidence,
   getDiscoveryDeviceResults,
   getDiscoveryRunSummary,
@@ -12,6 +16,7 @@ import {
   listDiscoveryCredentialProfiles,
   listDiscoveryTargets,
   testDiscoveryCredentialProfile,
+  updateDiscoveryCredentialProfile,
   updateDiscoveryTarget,
 } from '../api/discovery'
 import type {
@@ -73,6 +78,24 @@ const credentialTypeHelp: Record<
     summary:
       'SNMPv3 authentication material resolved from the configured secret provider.',
     transport_types: ['snmp'],
+  },
+  telnet_password: {
+    label: 'Telnet password',
+    summary:
+      'Username and password authentication over Telnet. This transport requires explicit insecure Telnet access.',
+    transport_types: ['telnet'],
+  },
+  http_basic: {
+    label: 'HTTP basic auth',
+    summary:
+      'Username and password authentication over HTTP/HTTPS. Insecure HTTP access must be explicitly approved.',
+    transport_types: ['http', 'https'],
+  },
+  http_token: {
+    label: 'HTTP bearer token',
+    summary:
+      'Token-based HTTP/HTTPS authentication. Insecure HTTP access must be explicitly approved.',
+    transport_types: ['http', 'https'],
   },
 }
 
@@ -391,12 +414,24 @@ function TargetSidebar({
   loading,
   onSelect,
   onAddTarget,
+  onDeleteTarget,
+  onDeleteSelected,
+  selectedTargetIds,
+  onToggleSelect,
+  onSelectAll,
+  allSelected,
 }: {
   targets: DiscoveryTargetResponse[]
   selectedTargetId: string
   loading: boolean
   onSelect: (id: string) => void
   onAddTarget: () => void
+  onDeleteTarget: (id: string) => void
+  onDeleteSelected: () => void
+  selectedTargetIds: string[]
+  onToggleSelect: (id: string) => void
+  onSelectAll: () => void
+  allSelected: boolean
 }) {
   const [query, setQuery] = useState('')
 
@@ -479,32 +514,53 @@ function TargetSidebar({
         <div className="discovery-targets-list">
           {filteredTargets.map((target) => {
             const selected = target.target_id === selectedTargetId
+            const bulkSelected = selectedTargetIds.includes(target.target_id)
 
             return (
-              <button
-                key={target.target_id}
-                type="button"
-                className={`discovery-target-item ${
-                  selected ? 'discovery-target-item-selected' : ''
-                }`}
-                onClick={() => onSelect(target.target_id)}
-              >
-                <span className="discovery-target-dot" />
-                <span className="discovery-target-item-main">
-                  <span className="discovery-target-item-name">
-                    {target.identifier}
+              <div key={target.target_id} className="discovery-target-item-wrap">
+                <label className="discovery-target-checkbox-wrap" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={bulkSelected}
+                    onChange={() => onToggleSelect(target.target_id)}
+                    aria-label={`Select target ${target.identifier}`}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={`discovery-target-item ${
+                    selected ? 'discovery-target-item-selected' : ''
+                  }`}
+                  onClick={() => onSelect(target.target_id)}
+                >
+                  <span className="discovery-target-dot" />
+                  <span className="discovery-target-item-main">
+                    <span className="discovery-target-item-name">
+                      {target.identifier}
+                    </span>
+                    <span className="discovery-target-item-address">
+                      {targetAddress(target)}
+                    </span>
+                    <span className="discovery-target-item-meta">
+                      <span>{formatPlatform(target.platform_hint)}</span>
+                      {target.preferred_transport ? (
+                        <TransportBadge transport={target.preferred_transport} />
+                      ) : null}
+                    </span>
                   </span>
-                  <span className="discovery-target-item-address">
-                    {targetAddress(target)}
-                  </span>
-                  <span className="discovery-target-item-meta">
-                    <span>{formatPlatform(target.platform_hint)}</span>
-                    {target.preferred_transport ? (
-                      <TransportBadge transport={target.preferred_transport} />
-                    ) : null}
-                  </span>
-                </span>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  className="discovery-btn discovery-btn-ghost discovery-btn-compact discovery-target-delete"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onDeleteTarget(target.target_id)
+                  }}
+                  aria-label={`Delete target ${target.identifier}`}
+                >
+                  Delete target
+                </button>
+              </div>
             )
           })}
         </div>
@@ -512,6 +568,21 @@ function TargetSidebar({
 
       {targets.length > 0 ? (
         <div className="discovery-targets-footer">
+          <button
+            type="button"
+            className="discovery-btn discovery-btn-ghost"
+            onClick={onSelectAll}
+          >
+            {allSelected ? 'Clear selection' : 'Select all'}
+          </button>
+          <button
+            type="button"
+            className="discovery-btn discovery-btn-secondary"
+            onClick={onDeleteSelected}
+            disabled={selectedTargetIds.length === 0}
+          >
+            Delete selected ({selectedTargetIds.length})
+          </button>
           <button
             type="button"
             className="discovery-btn discovery-btn-ghost"
@@ -584,7 +655,7 @@ function SelectedTargetPanel({
   testingCredential: boolean
   savingTargetProfile?: boolean
   onTestCredential: (transport: string) => void
-  onManageProfiles: () => void
+  onManageProfiles: (profileId?: string) => void
   onSaveTargetProfile?: (targetId: string, profileId: string) => Promise<void>
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -593,18 +664,33 @@ function SelectedTargetPanel({
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
 
   useEffect(() => {
-    setSelectedProfileId(target?.credential_profile_id || profile?.profile_id || '')
+    const newProfileId = target?.credential_profile_id || profile?.profile_id || ''
+    console.log('[SelectedTargetPanel] Setting selectedProfileId:', {
+      newProfileId,
+      targetId: target?.target_id,
+      targetCredentialProfileId: target?.credential_profile_id,
+      profileProfileId: profile?.profile_id,
+    })
+    setSelectedProfileId(newProfileId)
     setSaveError(null)
     setSaveSuccess(null)
   }, [target?.target_id, target?.credential_profile_id, profile?.profile_id])
 
   const activeProfile = useMemo(() => {
-    return (
-      profiles.find((p) => p.profile_id === selectedProfileId) || profile || null
-    )
+    const found = profiles.find((p) => p.profile_id === selectedProfileId)
+    const result = found || profile || null
+    console.log('[SelectedTargetPanel] activeProfile computed:', {
+      selectedProfileId,
+      foundInArray: !!found,
+      foundProfile: found,
+      fallbackProfile: profile,
+      result,
+      resultProfileId: result?.profile_id,
+    })
+    return result
   }, [profiles, selectedProfileId, profile])
 
-  const hasUnsavedChanges = Boolean(
+  const hasUnsavedCredentialChanges = Boolean(
     target &&
       selectedProfileId &&
       selectedProfileId !== (target.credential_profile_id || '')
@@ -615,6 +701,17 @@ function SelectedTargetPanel({
   const [testTransport, setTestTransport] = useState(
     normalizedTransport(activeProfile?.transport_types[0]) || 'ssh',
   )
+
+  // Sync testTransport with active profile's transport types
+  useEffect(() => {
+    const transportFromProfile = normalizedTransport(activeProfile?.transport_types[0]) || 'ssh'
+    setTestTransport(transportFromProfile)
+    console.log('[SelectedTargetPanel] Updated testTransport from activeProfile:', {
+      activeProfile: activeProfile?.profile_id,
+      transportTypes: activeProfile?.transport_types,
+      testTransport: transportFromProfile,
+    })
+  }, [activeProfile?.profile_id, activeProfile?.transport_types])
   const secretStatus = getSecretStatus(activeProfile, profileTestResult)
 
   if (!target) {
@@ -641,7 +738,7 @@ function SelectedTargetPanel({
             <button
               type="button"
               className="discovery-btn discovery-btn-secondary"
-              onClick={onManageProfiles}
+              onClick={() => onManageProfiles()}
             >
               Create credential profile
             </button>
@@ -708,7 +805,7 @@ function SelectedTargetPanel({
                   <button
                     type="button"
                     className="discovery-btn discovery-btn-ghost discovery-btn-compact"
-                    onClick={onManageProfiles}
+                    onClick={() => onManageProfiles(activeProfile?.profile_id)}
                   >
                     Manage profiles
                   </button>
@@ -810,7 +907,7 @@ function SelectedTargetPanel({
             <button
               type="button"
               className="discovery-btn discovery-btn-secondary"
-              onClick={onManageProfiles}
+              onClick={() => onManageProfiles()}
             >
               Create credential profile
             </button>
@@ -840,7 +937,7 @@ function SelectedTargetPanel({
               </label>
             </div>
 
-            {hasUnsavedChanges ? (
+            {hasUnsavedCredentialChanges ? (
               <div
                 className="discovery-target-profile-save-banner"
                 style={{
@@ -987,7 +1084,15 @@ function SelectedTargetPanel({
                   <button
                     type="button"
                     className="discovery-btn discovery-btn-ghost discovery-btn-compact"
-                    onClick={onManageProfiles}
+                    onClick={() => {
+                      console.log('[SelectedTargetPanel] Manage profiles clicked with:', {
+                        activeProfileId: activeProfile?.profile_id,
+                        activeProfile: activeProfile,
+                        selectedProfileId,
+                        target,
+                      })
+                      onManageProfiles(activeProfile?.profile_id)
+                    }}
                   >
                     Manage profiles
                   </button>
@@ -1432,11 +1537,15 @@ function AddTargetModal({
                   Preferred transport
                   <select
                     value={form.preferred_transport}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const nextTransport = event.target.value
                       onChange({
-                        preferred_transport: event.target.value,
+                        preferred_transport: nextTransport,
+                        allowed_fallback_transports: form.allowed_fallback_transports.filter(
+                          (item) => item !== nextTransport,
+                        ),
                       })
-                    }
+                    }}
                   >
                     {supportedTransports.map((transport) => (
                       <option key={transport} value={transport}>
@@ -1465,7 +1574,9 @@ function AddTargetModal({
                         onClick={() => {
                           const next = selected
                             ? form.allowed_fallback_transports.filter((item) => item !== transport)
-                            : [...form.allowed_fallback_transports, transport]
+                            : Array.from(
+                                new Set([...form.allowed_fallback_transports, transport]),
+                              )
                           onChange({ allowed_fallback_transports: next })
                         }}
                       >
@@ -1566,12 +1677,15 @@ function AddTargetModal({
 }
 
 function CredentialProfileModal({
+  mode,
   form,
   creating,
   onChange,
   onSubmit,
   onCancel,
+  onDelete,
 }: {
+  mode: 'create' | 'edit'
   form: {
     name: string
     description: string
@@ -1586,6 +1700,7 @@ function CredentialProfileModal({
   onChange: (next: Partial<typeof form>) => void
   onSubmit: (event: React.FormEvent) => void
   onCancel: () => void
+  onDelete?: () => void
 }) {
   const type =
     credentialTypeHelp[form.credential_type] || credentialTypeHelp.ssh_password
@@ -1593,9 +1708,14 @@ function CredentialProfileModal({
   const requiresUsername =
     form.credential_type === 'ssh_password' ||
     form.credential_type === 'ssh_key' ||
-    form.credential_type === 'snmp_v3'
+    form.credential_type === 'snmp_v3' ||
+    form.credential_type === 'telnet_password' ||
+    form.credential_type === 'http_basic'
 
   const allowedTransports = ['ssh', 'snmp', 'telnet', 'http', 'https']
+  const unsupportedFallbacks = form.transport_types.filter(
+    (transport) => !type.transport_types.includes(transport),
+  )
 
   return (
     <div className="discovery-modal-backdrop">
@@ -1609,7 +1729,9 @@ function CredentialProfileModal({
           <div className="discovery-modal-header">
             <div>
               <div className="discovery-eyebrow">CREDENTIALS</div>
-              <h2 id="create-profile-title">Create credential profile</h2>
+              <h2 id="create-profile-title">
+                {mode === 'edit' ? 'Edit credential profile' : 'Create credential profile'}
+              </h2>
               <p className="muted">
                 Store authentication metadata without storing secret material.
               </p>
@@ -1704,6 +1826,9 @@ function CredentialProfileModal({
                   <option value="ssh_key">SSH key</option>
                   <option value="snmp_v2c">SNMPv2c community</option>
                   <option value="snmp_v3">SNMPv3</option>
+                  <option value="telnet_password">Telnet password</option>
+                  <option value="http_basic">HTTP basic auth</option>
+                  <option value="http_token">HTTP bearer token</option>
                 </select>
               </label>
 
@@ -1740,6 +1865,12 @@ function CredentialProfileModal({
 
             <div className="discovery-form-section">
               <h3>Transport</h3>
+              {unsupportedFallbacks.length > 0 ? (
+                <p className="discovery-inline-error" role="alert">
+                  This credential type supports only {type.transport_types.join(', ').toUpperCase()}.
+                  Unsupported transport selections are ignored at runtime.
+                </p>
+              ) : null}
               <div className="discovery-transport-chips">
                 {allowedTransports.map((transport) => {
                   const selected = form.transport_types.includes(transport)
@@ -1778,6 +1909,15 @@ function CredentialProfileModal({
           </div>
 
           <div className="discovery-modal-footer">
+            {mode === 'edit' && onDelete ? (
+              <button
+                type="button"
+                className="discovery-btn discovery-btn-ghost"
+                onClick={onDelete}
+              >
+                Delete profile
+              </button>
+            ) : null}
             <button
               type="button"
               className="discovery-btn discovery-btn-secondary"
@@ -1795,7 +1935,7 @@ function CredentialProfileModal({
                 form.transport_types.length === 0
               }
             >
-              {creating ? 'Saving…' : 'Save profile'}
+              {creating ? 'Saving…' : mode === 'edit' ? 'Update profile' : 'Save profile'}
             </button>
           </div>
         </form>
@@ -1809,6 +1949,7 @@ export function DiscoveryPage() {
   const [targets, setTargets] = useState<DiscoveryTargetResponse[]>([])
   const [profiles, setProfiles] = useState<CredentialProfileResponse[]>([])
   const [selectedTargetId, setSelectedTargetId] = useState('')
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([])
   const [job, setJob] = useState<DiscoveryApiJobResponse | null>(null)
   const [evidence, setEvidence] = useState<DiscoveryEvidenceResponse[]>([])
   const [deviceResults, setDeviceResults] = useState<
@@ -1827,6 +1968,8 @@ export function DiscoveryPage() {
   const [error, setError] = useState<string | null>(null)
   const [showAddTargetModal, setShowAddTargetModal] = useState(false)
   const [showProfileComposer, setShowProfileComposer] = useState(false)
+  const [profileComposerMode, setProfileComposerMode] = useState<'create' | 'edit'>('create')
+  const [profileComposerProfileId, setProfileComposerProfileId] = useState('')
   const [profileTestResult, setProfileTestResult] =
     useState<CredentialProfileTestResponse | null>(null)
   const requestedJobId = searchParams.get('job_id')
@@ -1888,7 +2031,7 @@ export function DiscoveryPage() {
   }
 
 
-  async function loadTargets() {
+  const loadTargets = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -1908,9 +2051,9 @@ export function DiscoveryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedTargetId])
 
-  async function loadProfiles() {
+  const loadProfiles = useCallback(async () => {
     try {
       const data = await listDiscoveryCredentialProfiles()
       setProfiles(data)
@@ -1928,11 +2071,11 @@ export function DiscoveryPage() {
           : 'Unable to load credential profiles.',
       )
     }
-  }
+  }, [targetForm.credential_profile_id])
 
   useEffect(() => {
     void Promise.all([loadTargets(), loadProfiles()])
-  }, [])
+  }, [loadTargets, loadProfiles])
 
   useEffect(() => {
     if (!requestedJobId) return
@@ -2063,6 +2206,177 @@ export function DiscoveryPage() {
     }
   }
 
+  async function openProfileComposer(profileId?: string) {
+    console.log('[DiscoveryPage] openProfileComposer called with:', {
+      profileId,
+      isTruthy: !!profileId,
+      type: typeof profileId,
+    })
+    
+    const mode = profileId ? 'edit' : 'create'
+    console.log('[DiscoveryPage] Setting profileComposerMode to:', mode)
+    
+    setProfileComposerMode(mode)
+    setProfileComposerProfileId(profileId || '')
+    setShowProfileComposer(true)
+
+    if (!profileId) {
+      console.log('[DiscoveryPage] No profileId, setting empty form for CREATE mode')
+      setProfileForm({
+        name: '',
+        description: '',
+        vendor: 'cisco',
+        platform: 'cisco-iosxe',
+        credential_type: 'ssh_password',
+        username: '',
+        transport_types: ['ssh'],
+        provider_reference: '',
+      })
+      return
+    }
+
+    // Always fetch fresh profile data to ensure edit mode loads current state
+    try {
+      console.log('[DiscoveryPage] Fetching profile data for EDIT mode with ID:', profileId)
+      const loaded = await getDiscoveryCredentialProfile(profileId)
+      console.log('[DiscoveryPage] Loaded profile data:', loaded)
+      setProfileForm({
+        name: loaded.name || '',
+        description: loaded.description || '',
+        vendor: loaded.vendor || 'cisco',
+        platform: loaded.platform || 'cisco-iosxe',
+        credential_type: loaded.credential_type || 'ssh_password',
+        username: loaded.username || '',
+        transport_types: loaded.transport_types || ['ssh'],
+        provider_reference: loaded.provider_reference || '',
+      })
+      console.log('[DiscoveryPage] Profile form populated with loaded data')
+    } catch (err) {
+      console.error('[DiscoveryPage] Error loading profile:', err)
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to load the selected credential profile.',
+      )
+      setShowProfileComposer(false)
+    }
+  }
+
+  async function handleDeleteTarget(targetId: string) {
+    if (!window.confirm('Delete this target? This action cannot be undone.')) {
+      return
+    }
+
+    setError(null)
+    try {
+      await deleteDiscoveryTarget(targetId)
+      const refreshed = await listDiscoveryTargets()
+      setTargets(refreshed)
+      setSelectedTargetIds((current) => current.filter((id) => id !== targetId))
+
+      if (selectedTargetId === targetId) {
+        const nextSelected = refreshed[0]?.target_id || ''
+        setSelectedTargetId(nextSelected)
+      }
+
+      if (selectedTarget?.target_id === targetId) {
+        setProfileTestResult(null)
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Unable to delete discovery target.',
+      )
+    }
+  }
+
+  function handleToggleTargetSelection(targetId: string) {
+    setSelectedTargetIds((current) =>
+      current.includes(targetId)
+        ? current.filter((id) => id !== targetId)
+        : [...current, targetId],
+    )
+  }
+
+  function handleSelectAllTargets() {
+    setSelectedTargetIds((current) => {
+      if (current.length === targets.length) {
+        return []
+      }
+      return targets.map((target) => target.target_id)
+    })
+  }
+
+  async function handleDeleteSelectedTargets() {
+    if (selectedTargetIds.length === 0) {
+      return
+    }
+
+    if (!window.confirm(`Delete ${selectedTargetIds.length} selected targets? This action cannot be undone.`)) {
+      return
+    }
+
+    setError(null)
+    try {
+      await deleteDiscoveryTargets(selectedTargetIds)
+      const refreshed = await listDiscoveryTargets()
+      setTargets(refreshed)
+      setSelectedTargetIds([])
+
+      if (selectedTargetId && !refreshed.some((target) => target.target_id === selectedTargetId)) {
+        setSelectedTargetId(refreshed[0]?.target_id || '')
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Unable to delete the selected targets.',
+      )
+    }
+  }
+
+  async function handleDeleteProfile(profileId: string) {
+    if (!window.confirm('Delete this credential profile? This action cannot be undone.')) {
+      return
+    }
+
+    setError(null)
+    try {
+      await deleteDiscoveryCredentialProfile(profileId)
+      const refreshedProfiles = await listDiscoveryCredentialProfiles()
+      const refreshedTargets = await listDiscoveryTargets()
+      setProfiles(refreshedProfiles)
+      setTargets(refreshedTargets)
+
+      if (selectedTarget?.credential_profile_id === profileId) {
+        const nextSelected = refreshedTargets.find(
+          (target) => target.target_id === selectedTarget.target_id,
+        )
+        if (nextSelected) {
+          setSelectedTargetId(nextSelected.target_id)
+        }
+        setProfileTestResult(null)
+      }
+
+      setShowProfileComposer(false)
+      setProfileComposerMode('create')
+      setProfileComposerProfileId('')
+      setProfileForm({
+        name: '',
+        description: '',
+        vendor: 'cisco',
+        platform: 'cisco-iosxe',
+        credential_type: 'ssh_password',
+        username: '',
+        transport_types: ['ssh'],
+        provider_reference: '',
+      })
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to delete credential profile.',
+      )
+    }
+  }
+
   async function handleCreateProfile(event: React.FormEvent) {
     event.preventDefault()
     setCreatingProfile(true)
@@ -2087,7 +2401,9 @@ export function DiscoveryPage() {
       const requiresUsername =
         profileForm.credential_type === 'ssh_password' ||
         profileForm.credential_type === 'ssh_key' ||
-        profileForm.credential_type === 'snmp_v3'
+        profileForm.credential_type === 'snmp_v3' ||
+        profileForm.credential_type === 'telnet_password' ||
+        profileForm.credential_type === 'http_basic'
 
       if (requiresUsername && !payload.username) {
         throw new Error(
@@ -2099,6 +2415,32 @@ export function DiscoveryPage() {
         throw new Error('Select at least one supported transport.')
       }
 
+      if (profileComposerMode === 'edit' && profileComposerProfileId) {
+        const updated = await updateDiscoveryCredentialProfile(
+          profileComposerProfileId,
+          payload,
+        )
+        const refreshed = await listDiscoveryCredentialProfiles()
+        setProfiles(refreshed)
+        if (selectedTarget?.credential_profile_id === profileComposerProfileId) {
+          setSelectedTargetId((current) => current)
+        }
+        setProfileComposerMode('create')
+        setProfileComposerProfileId('')
+        setProfileForm({
+          name: '',
+          description: '',
+          vendor: 'cisco',
+          platform: 'cisco-iosxe',
+          credential_type: 'ssh_password',
+          username: '',
+          transport_types: ['ssh'],
+          provider_reference: '',
+        })
+        setShowProfileComposer(false)
+        return updated
+      }
+
       const created = await createDiscoveryCredentialProfile(payload)
       const refreshed = await listDiscoveryCredentialProfiles()
 
@@ -2108,6 +2450,8 @@ export function DiscoveryPage() {
         credential_profile_id: created.profile_id,
       }))
 
+      setProfileComposerMode('create')
+      setProfileComposerProfileId('')
       setProfileForm({
         name: '',
         description: '',
@@ -2124,7 +2468,9 @@ export function DiscoveryPage() {
       setError(
         err instanceof Error
           ? err.message
-          : 'Unable to create credential profile.',
+          : profileComposerMode === 'edit'
+            ? 'Unable to update credential profile.'
+            : 'Unable to create credential profile.',
       )
     } finally {
       setCreatingProfile(false)
@@ -2278,6 +2624,12 @@ export function DiscoveryPage() {
             setProfileTestResult(null)
           }}
           onAddTarget={() => setShowAddTargetModal(true)}
+          onDeleteTarget={handleDeleteTarget}
+          onDeleteSelected={handleDeleteSelectedTargets}
+          selectedTargetIds={selectedTargetIds}
+          onToggleSelect={handleToggleTargetSelection}
+          onSelectAll={handleSelectAllTargets}
+          allSelected={targets.length > 0 && selectedTargetIds.length === targets.length}
         />
 
         <SelectedTargetPanel
@@ -2290,7 +2642,16 @@ export function DiscoveryPage() {
           onTestCredential={(transport) =>
             void handleTestSelectedProfile(selectedProfile?.profile_id, transport)
           }
-          onManageProfiles={() => setShowProfileComposer(true)}
+          onManageProfiles={(profileId) => {
+            console.log('[DiscoveryPage] onManageProfiles callback triggered with:', {
+              profileId,
+              isTruthy: !!profileId,
+              type: typeof profileId,
+              selectedTarget: selectedTarget?.target_id,
+              selectedTargetProfileId: selectedTarget?.credential_profile_id,
+            })
+            void openProfileComposer(profileId)
+          }}
           onSaveTargetProfile={handleSaveTargetProfile}
         />
       </div>
@@ -2335,13 +2696,23 @@ export function DiscoveryPage() {
 
       {showProfileComposer ? (
         <CredentialProfileModal
+          mode={profileComposerMode}
           form={profileForm}
           creating={creatingProfile}
           onChange={(next) =>
             setProfileForm((current) => ({ ...current, ...next }))
           }
           onSubmit={handleCreateProfile}
-          onCancel={() => setShowProfileComposer(false)}
+          onCancel={() => {
+            setShowProfileComposer(false)
+            setProfileComposerMode('create')
+            setProfileComposerProfileId('')
+          }}
+          onDelete={
+            profileComposerMode === 'edit' && profileComposerProfileId
+              ? () => void handleDeleteProfile(profileComposerProfileId)
+              : undefined
+          }
         />
       ) : null}
     </div>

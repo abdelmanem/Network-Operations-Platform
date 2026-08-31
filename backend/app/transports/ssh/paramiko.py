@@ -54,7 +54,7 @@ class ParamikoSSHSession(SSHSession):
 
         paramiko = _paramiko_module()
         self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client = self.client
         assert client is not None
 

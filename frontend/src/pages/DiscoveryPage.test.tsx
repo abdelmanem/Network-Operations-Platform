@@ -6,6 +6,7 @@ const {
   listTargets,
   listCredentialProfiles,
   createTarget,
+  deleteTarget,
   createJob,
   getJob,
   getDeviceResults,
@@ -13,12 +14,16 @@ const {
   getRunSummary,
   getTransportAttempts,
   createCredentialProfile,
+  deleteCredentialProfile,
   testCredentialProfile,
   updateTarget,
+  getCredentialProfile,
+  updateCredentialProfile,
 } = vi.hoisted(() => ({
   listTargets: vi.fn(),
   listCredentialProfiles: vi.fn(),
   createTarget: vi.fn(),
+  deleteTarget: vi.fn(),
   updateTarget: vi.fn(),
   createJob: vi.fn(),
   getJob: vi.fn(),
@@ -27,13 +32,17 @@ const {
   getRunSummary: vi.fn(),
   getTransportAttempts: vi.fn(),
   createCredentialProfile: vi.fn(),
+  deleteCredentialProfile: vi.fn(),
   testCredentialProfile: vi.fn(),
+  getCredentialProfile: vi.fn(),
+  updateCredentialProfile: vi.fn(),
 }))
 
 vi.mock('../api/discovery', () => ({
   listDiscoveryTargets: listTargets,
   listDiscoveryCredentialProfiles: listCredentialProfiles,
   createDiscoveryTarget: createTarget,
+  deleteDiscoveryTarget: deleteTarget,
   updateDiscoveryTarget: updateTarget,
   createDiscoveryApiJob: createJob,
   getDiscoveryApiJob: getJob,
@@ -42,7 +51,10 @@ vi.mock('../api/discovery', () => ({
   getDiscoveryRunSummary: getRunSummary,
   getDiscoveryTransportAttempts: getTransportAttempts,
   createDiscoveryCredentialProfile: createCredentialProfile,
+  deleteDiscoveryCredentialProfile: deleteCredentialProfile,
   testDiscoveryCredentialProfile: testCredentialProfile,
+  getDiscoveryCredentialProfile: getCredentialProfile,
+  updateDiscoveryCredentialProfile: updateCredentialProfile,
 }))
 
 import { DiscoveryPage } from './DiscoveryPage'
@@ -52,6 +64,7 @@ describe('DiscoveryPage', () => {
     listTargets.mockReset()
     listCredentialProfiles.mockReset()
     createTarget.mockReset()
+    deleteTarget.mockReset()
     createJob.mockReset()
     getJob.mockReset()
     getDeviceResults.mockReset()
@@ -59,8 +72,11 @@ describe('DiscoveryPage', () => {
     getRunSummary.mockReset()
     getTransportAttempts.mockReset()
     createCredentialProfile.mockReset()
+    deleteCredentialProfile.mockReset()
     testCredentialProfile.mockReset()
     updateTarget.mockReset()
+    getCredentialProfile.mockReset()
+    updateCredentialProfile.mockReset()
     getRunSummary.mockResolvedValue(null)
     getTransportAttempts.mockResolvedValue([])
   })
@@ -724,5 +740,253 @@ describe('DiscoveryPage', () => {
       ).toBeInTheDocument()
     })
   })
+
+  it('allows deleting a target from the sidebar', async () => {
+    listTargets.mockResolvedValue([
+      {
+        target_id: 'target-1',
+        tenant_id: 'default',
+        identifier: 'first-target',
+        address: '10.0.0.1',
+        vendor: 'cisco',
+        scope_type: 'single_device',
+        scope_end: null,
+        scope_cidr: null,
+        credential_profile_id: 'profile-1',
+        platform_hint: 'cisco-iosxe',
+        preferred_transport: 'ssh',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+      {
+        target_id: 'target-2',
+        tenant_id: 'default',
+        identifier: 'second-target',
+        address: '10.0.0.2',
+        vendor: 'cisco',
+        scope_type: 'single_device',
+        scope_end: null,
+        scope_cidr: null,
+        credential_profile_id: 'profile-1',
+        platform_hint: 'cisco-iosxe',
+        preferred_transport: 'ssh',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    listCredentialProfiles.mockResolvedValue([
+      {
+        profile_id: 'profile-1',
+        tenant_id: 'default',
+        name: 'Cisco Profile 1',
+        description: 'Profile 1',
+        transport_types: ['ssh'],
+        provider_reference: 'ref-1',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    deleteTarget.mockResolvedValue(undefined)
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('first-target')).toBeInTheDocument()
+    })
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete target/i })
+    fireEvent.click(deleteButtons[0])
+
+    await waitFor(() => {
+      expect(deleteTarget).toHaveBeenCalledWith('target-1')
+    })
+  })
+
+  it('allows deleting an existing credential profile via the profile editor', async () => {
+    const profileId = 'profile-cisco-prod'
+    const existingProfile = {
+      profile_id: profileId,
+      tenant_id: 'default',
+      name: 'Cisco Production',
+      description: 'Production environment',
+      vendor: 'cisco',
+      platform: 'cisco-iosxe',
+      credential_type: 'ssh_password',
+      username: 'netops',
+      transport_types: ['ssh'],
+      provider_reference: 'vault-prod-ssh',
+      enabled: true,
+      created_at: '2026-08-19T10:00:00Z',
+      updated_at: '2026-08-19T10:00:00Z',
+    }
+
+    listTargets.mockResolvedValue([
+      {
+        target_id: 'target-1',
+        tenant_id: 'default',
+        identifier: 'cisco-prod',
+        address: '192.168.1.0/24',
+        vendor: 'cisco',
+        scope_type: 'cidr_network',
+        scope_end: null,
+        scope_cidr: '192.168.1.0/24',
+        credential_profile_id: profileId,
+        platform_hint: 'cisco-ios',
+        preferred_transport: 'ssh',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+    listCredentialProfiles.mockResolvedValue([existingProfile])
+    getCredentialProfile.mockResolvedValue(existingProfile)
+    deleteCredentialProfile.mockResolvedValue(undefined)
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/cisco production/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /manage profiles/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/edit credential profile/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /delete profile/i }))
+
+    await waitFor(() => {
+      expect(deleteCredentialProfile).toHaveBeenCalledWith(profileId)
+    })
+  })
+
+  it('allows editing an existing credential profile via Manage profiles button and updates it', async () => {
+    const profileId = 'profile-cisco-prod'
+    const existingProfile = {
+      profile_id: profileId,
+      tenant_id: 'default',
+      name: 'Cisco Production',
+      description: 'Production environment',
+      vendor: 'cisco',
+      platform: 'cisco-iosxe',
+      credential_type: 'ssh_password',
+      username: 'netops',
+      transport_types: ['ssh'],
+      provider_reference: 'vault-prod-ssh',
+      enabled: true,
+      created_at: '2026-08-19T10:00:00Z',
+      updated_at: '2026-08-19T10:00:00Z',
+    }
+
+    const updatedProfile = {
+      ...existingProfile,
+      username: 'netops-admin',
+      description: 'Production environment (updated)',
+      updated_at: '2026-08-19T11:00:00Z',
+    }
+
+    listTargets.mockResolvedValue([
+      {
+        target_id: 'target-1',
+        tenant_id: 'default',
+        identifier: 'cisco-prod',
+        address: '192.168.1.0/24',
+        vendor: 'cisco',
+        scope_type: 'cidr_network',
+        scope_end: null,
+        scope_cidr: '192.168.1.0/24',
+        credential_profile_id: profileId,
+        platform_hint: 'cisco-ios',
+        preferred_transport: 'ssh',
+        enabled: true,
+        created_at: '2026-08-19T10:00:00Z',
+        updated_at: '2026-08-19T10:00:00Z',
+      },
+    ])
+
+    listCredentialProfiles.mockResolvedValue([existingProfile])
+    getCredentialProfile.mockResolvedValue(existingProfile)
+    updateCredentialProfile.mockResolvedValue(updatedProfile)
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    // Wait for target to load and be selected
+    await waitFor(() => {
+      // Look for the selected profile display in the credential details section
+      const displays = screen.getAllByText(/cisco production/i)
+      expect(displays.length).toBeGreaterThan(0)
+    })
+
+    // Click Manage profiles button
+    const manageProfilesButton = screen.getByRole('button', {
+      name: /manage profiles/i,
+    })
+    fireEvent.click(manageProfilesButton)
+
+    // Verify modal opens in EDIT mode (title says "Edit" not "Create")
+    await waitFor(() => {
+      expect(screen.getByText(/edit credential profile/i)).toBeInTheDocument()
+    })
+
+    // Verify form is pre-populated with existing profile data
+    const usernameInput = screen.getByLabelText(/username/i) as HTMLInputElement
+    expect(usernameInput.value).toBe('netops')
+
+    const descriptionInput = screen.getByLabelText(/description/i) as HTMLInputElement
+    expect(descriptionInput.value).toBe('Production environment')
+
+    // Verify that getDiscoveryCredentialProfile was called with correct profile ID
+    expect(getCredentialProfile).toHaveBeenCalledWith(profileId)
+
+    // Change the username
+    fireEvent.change(usernameInput, { target: { value: 'netops-admin' } })
+    fireEvent.change(screen.getByLabelText(/description/i), {
+      target: { value: 'Production environment (updated)' },
+    })
+
+    // Save the profile
+    const saveButton = screen.getByRole('button', {
+      name: /update profile|save profile/i,
+    })
+    fireEvent.click(saveButton)
+
+    // Verify PATCH request is sent with the correct profile ID
+    await waitFor(() => {
+      expect(updateCredentialProfile).toHaveBeenCalledWith(
+        profileId,
+        expect.objectContaining({
+          username: 'netops-admin',
+          description: 'Production environment (updated)',
+        }),
+      )
+    })
+
+    // Verify modal closes
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/edit credential profile/i),
+      ).not.toBeInTheDocument()
+    })
+
+    // Verify profiles list is refreshed
+    expect(listCredentialProfiles).toHaveBeenCalled()
+  })
 })
+
 

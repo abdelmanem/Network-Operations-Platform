@@ -179,6 +179,10 @@ export interface CredentialProfileResponse {
   tenant_id: string
   name: string
   description: string | null
+  vendor?: string | null
+  platform?: string | null
+  credential_type?: string | null
+  username?: string | null
   transport_types: string[]
   provider_reference: string
   enabled: boolean

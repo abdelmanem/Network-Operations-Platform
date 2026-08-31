@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from backend.app.api.v1.dependencies import get_db_session, get_secret_provider
 from backend.app.auth.api.dependencies import require_permission
 from backend.app.auth.domain.models import User
-from backend.app.persistence.discovery_repositories import CredentialProfileRepository
+from backend.app.persistence.discovery_repositories import (
+    CredentialProfileRepository,
+    DiscoveryTargetRepository,
+)
 from backend.app.persistence.models import CredentialProfileRecord
 from backend.app.schemas.discovery import (
     CredentialProfileRequest,
@@ -111,6 +114,7 @@ def update_profile(
         credential_type=payload.credential_type,
         username=payload.username,
         transport_types=payload.transport_types,
+        provider_reference=payload.provider_reference,
         enabled=payload.enabled,
     )
     db_session.commit()
@@ -128,7 +132,19 @@ def delete_profile(
     _: Annotated[User, Depends(require_permission("credential:write"))],
     tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
 ) -> None:
-    deleted = CredentialProfileRepository(db_session).delete(
+    profile_repo = CredentialProfileRepository(db_session)
+    target_repo = DiscoveryTargetRepository(db_session)
+
+    for target in target_repo.list(tenant_id=tenant_id):
+        if target.credential_profile_id == str(profile_id):
+            target_repo.update(
+                tenant_id=tenant_id,
+                target_id=target.id,
+                credential_profile_id=None,
+                credential_reference="",
+            )
+
+    deleted = profile_repo.delete(
         tenant_id=tenant_id,
         profile_id=profile_id,
     )

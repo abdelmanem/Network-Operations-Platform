@@ -123,6 +123,28 @@ class DiscoveryTargetRequest(BaseModel):
         return list(dict.fromkeys(value))
 
 
+class DiscoveryTargetBulkDeleteRequest(BaseModel):
+    """Delete multiple discovery targets in one operation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("target_ids")
+    @classmethod
+    def validate_target_ids(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            if not item or not item.strip():
+                continue
+            normalized = item.strip()
+            if normalized not in seen:
+                seen.add(normalized)
+                cleaned.append(normalized)
+        return cleaned
+
+
 class DiscoveryTargetUpdateRequest(BaseModel):
     """Validated target update contract."""
 
@@ -253,6 +275,7 @@ class CredentialProfileUpdateRequest(BaseModel):
     credential_type: str | None = Field(default=None, max_length=64)
     username: str | None = Field(default=None, max_length=255)
     transport_types: list[str] | None = Field(default=None)
+    provider_reference: str | None = Field(default=None, min_length=1, max_length=512)
     enabled: bool | None = None
 
 

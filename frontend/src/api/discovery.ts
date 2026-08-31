@@ -98,6 +98,25 @@ export async function updateDiscoveryTarget(
   }
 }
 
+export async function deleteDiscoveryTarget(targetId: string): Promise<void> {
+  try {
+    await api.delete(`/api/v1/discovery/targets/${targetId}`)
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function deleteDiscoveryTargets(targetIds: string[]): Promise<void> {
+  if (targetIds.length === 0) {
+    return
+  }
+
+  try {
+    await api.delete('/api/v1/discovery/targets', { data: { target_ids: targetIds } })
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
 
 export async function listDiscoveryCredentialProfiles(): Promise<
   CredentialProfileResponse[]
@@ -105,6 +124,19 @@ export async function listDiscoveryCredentialProfiles(): Promise<
   try {
     const response = await api.get<CredentialProfileResponse[]>(
       '/api/v1/credentials/profiles',
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function getDiscoveryCredentialProfile(
+  profileId: string,
+): Promise<CredentialProfileResponse> {
+  try {
+    const response = await api.get<CredentialProfileResponse>(
+      `/api/v1/credentials/profiles/${profileId}`,
     )
     return response.data
   } catch (error) {
@@ -121,6 +153,31 @@ export async function createDiscoveryCredentialProfile(
       payload,
     )
     return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function updateDiscoveryCredentialProfile(
+  profileId: string,
+  payload: CredentialProfileRequest,
+): Promise<CredentialProfileResponse> {
+  try {
+    const response = await api.patch<CredentialProfileResponse>(
+      `/api/v1/credentials/profiles/${profileId}`,
+      payload,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function deleteDiscoveryCredentialProfile(
+  profileId: string,
+): Promise<void> {
+  try {
+    await api.delete(`/api/v1/credentials/profiles/${profileId}`)
   } catch (error) {
     throw new Error(normalizeApiError(error))
   }

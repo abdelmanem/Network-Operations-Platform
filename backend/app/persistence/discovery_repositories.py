@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, cast as sql_cast, func, or_, select, text, update
+from sqlalchemy import String, cast as sql_cast, delete, func, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -29,6 +29,7 @@ from backend.app.discovery.leases import (
 )
 from backend.app.persistence.models import (
     CredentialProfileRecord,
+    DiscoveryDeviceResultRecord,
     DiscoveryEvidenceRecord,
     DiscoveryJobRecord,
     DiscoveryRunRecord,
@@ -170,11 +171,68 @@ class DiscoveryTargetRepository:
         if record is None:
             raise DiscoveryResourceNotFoundError("Discovery target was not found.")
         for key, value in changes.items():
-            if value is not None:
-                setattr(record, key, value)
+            setattr(record, key, value)
         self.session.flush()
         return record
 
+    def delete(self, *, tenant_id: str, target_id: UUID) -> bool:
+        record = self.get(tenant_id=tenant_id, target_id=target_id)
+        if record is None:
+            return False
+
+        job_ids = tuple(
+            row
+            for row in self.session.scalars(
+                select(DiscoveryJobRecord.id).where(
+                    DiscoveryJobRecord.tenant_id == tenant_id,
+                    DiscoveryJobRecord.target_id == target_id,
+                )
+            )
+        )
+        if job_ids:
+            device_result_ids = tuple(
+                row
+                for row in self.session.scalars(
+                    select(DiscoveryDeviceResultRecord.id).where(
+                        or_(
+                            DiscoveryDeviceResultRecord.discovery_job_id.in_(job_ids),
+                            DiscoveryDeviceResultRecord.child_job_id.in_(job_ids),
+                        )
+                    )
+                )
+            )
+            if device_result_ids:
+                self.session.execute(
+                    delete(DiscoveryTransportAttemptRecord).where(
+                        DiscoveryTransportAttemptRecord.device_result_id.in_(device_result_ids)
+                    )
+                )
+                self.session.execute(
+                    delete(DiscoveryDeviceResultRecord).where(
+                        DiscoveryDeviceResultRecord.id.in_(device_result_ids)
+                    )
+                )
+            self.session.execute(
+                delete(DiscoveryEvidenceRecord).where(
+                    or_(
+                        DiscoveryEvidenceRecord.target_id == target_id,
+                        DiscoveryEvidenceRecord.job_id.in_(job_ids),
+                    )
+                )
+            )
+            self.session.execute(
+                delete(DiscoveryJobRecord).where(DiscoveryJobRecord.id.in_(job_ids))
+            )
+        else:
+            self.session.execute(
+                delete(DiscoveryEvidenceRecord).where(
+                    DiscoveryEvidenceRecord.target_id == target_id
+                )
+            )
+
+        self.session.delete(record)
+        self.session.flush()
+        return True
 
 
 class CredentialProfileRepository:
@@ -233,8 +291,7 @@ class CredentialProfileRepository:
         if record is None:
             raise DiscoveryResourceNotFoundError("Credential profile was not found.")
         for key, value in changes.items():
-            if value is not None:
-                setattr(record, key, value)
+            setattr(record, key, value)
         self.session.flush()
         return record
 

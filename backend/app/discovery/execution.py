@@ -138,6 +138,7 @@ class DiscoveryExecutionService:
                 )
 
         if profile is not None:
+            supported_transports = {str(t).lower() for t in (profile.transport_types or [])}
             policy = MultiTransportPolicy.from_credential_profile(
                 profile,
                 allow_insecure=allow_insecure,
@@ -164,17 +165,24 @@ class DiscoveryExecutionService:
                 if not transport_names:
                     transport_names = ["ssh"]
         else:
+            supported_transports = set()
             transport_names = ["ssh"]
 
-        # Also consider target-level fallback transports for backward compat
+        # Only target-level fallbacks that are compatible with the selected
+        # credential profile may participate in the runtime chain.
         raw_fallback = target_metadata.get("allowed_fallback_transports")
         fallback = list(raw_fallback) if isinstance(raw_fallback, list) else []
         if fallback:
             for t in fallback:
-                if t not in transport_names:
-                    if t == "telnet" and not allow_insecure:
+                name = str(t).lower()
+                if profile is not None and name not in supported_transports:
+                    continue
+                if name not in transport_names:
+                    if name == "telnet" and not allow_insecure:
                         continue
-                    transport_names.append(t)
+                    if name == "http" and not allow_insecure_http:
+                        continue
+                    transport_names.append(name)
 
         # Remove duplicates preserving order
         seen: set[str] = set()
@@ -566,13 +574,32 @@ class DiscoveryExecutionService:
             if last_failure.failure_message:
                 failure_message = last_failure.failure_message
 
-        # Map result_state for cases not covered by attempt failures
+        # Map result_state for cases not covered by attempt failures.
+        # Preserve the concrete failure code from the last transport attempt when
+        # the host is reachable but the collector/discovery workflow itself failed,
+        # rather than rewriting it to a misleading network-unreachable message.
         if mt_result.result_state == DiscoveryResultState.UNREACHABLE:
             failure_code = DiscoveryFailureCode.CONNECTION_FAILED
             failure_message = "Host was unreachable for all configured transports."
         elif mt_result.result_state == DiscoveryResultState.REACHABLE_NO_MANAGEMENT:
-            failure_code = DiscoveryFailureCode.TRANSPORT_UNAVAILABLE
-            failure_message = "Host is reachable but no configured management transport succeeded."
+            if last_failure is not None and last_failure.failure_code in {
+                DiscoveryFailureCode.DISCOVERY_FAILED,
+                DiscoveryFailureCode.COLLECTOR_FAILED,
+                DiscoveryFailureCode.PARSER_FAILED,
+                DiscoveryFailureCode.NORMALIZATION_FAILED,
+                DiscoveryFailureCode.EVIDENCE_PERSISTENCE_FAILED,
+                DiscoveryFailureCode.SNAPSHOT_PERSISTENCE_FAILED,
+            }:
+                failure_code = last_failure.failure_code
+                failure_message = (
+                    last_failure.failure_message
+                    or "Discovery failed on a reachable host."
+                )
+            else:
+                failure_code = DiscoveryFailureCode.TRANSPORT_UNAVAILABLE
+                failure_message = (
+                    "Host is reachable but no configured management transport succeeded."
+                )
         elif mt_result.result_state == DiscoveryResultState.AUTHENTICATION_FAILED:
             failure_code = DiscoveryFailureCode.AUTHENTICATION_FAILED
             failure_message = "Authentication failed for all applicable management transports."

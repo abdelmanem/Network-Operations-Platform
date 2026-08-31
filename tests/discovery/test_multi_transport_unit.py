@@ -7,7 +7,10 @@ from backend.app.collectors.context import CollectorContext
 from backend.app.collectors.registry import CollectorRegistry
 from backend.app.discovery.capabilities import CollectorCapability
 from backend.app.discovery.contracts import DiscoveryFailureCode, DiscoveryJobStatus
-from backend.app.discovery.execution import DiscoveryExecutionService
+from backend.app.discovery.execution import (
+    DiscoveryExecutionService,
+    DiscoveryTargetRecordView,
+)
 from backend.app.discovery.result_states import DiscoveryResultState
 from backend.app.models.base import BaseModel
 from backend.app.persistence.discovery_repositories import DiscoveryJobRepository
@@ -73,6 +76,23 @@ class SshTimeoutCollector(BaseCollector):
 
     async def collect(self, context: CollectorContext, *, discovered_targets):
         raise TimeoutError("Connection timed out - host unreachable")
+
+    async def normalize(self, context, raw_payload, *, discovered_targets):
+        raise AssertionError("Must not normalize in unit tests")
+
+    async def close(self) -> None:
+        return None
+
+
+class GenericDiscoveryFailCollector(BaseCollector):
+    async def health_check(self, context: CollectorContext) -> None:
+        await asyncio.sleep(0)
+
+    async def discover(self, context: CollectorContext):
+        return ()
+
+    async def collect(self, context: CollectorContext, *, discovered_targets):
+        raise RuntimeError("Collector failed during discovery processing")
 
     async def normalize(self, context, raw_payload, *, discovered_targets):
         raise AssertionError("Must not normalize in unit tests")
@@ -344,6 +364,34 @@ def _register_all_transports(
     )
 
 
+def test_runtime_policy_ssh_profile_rejects_unsupported_fallbacks() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh"])
+    target_view = DiscoveryTargetRecordView(
+        id=uuid4(),
+        tenant_id="tenant-a",
+        identifier="core-01",
+        address="10.0.0.1",
+        enabled=True,
+        metadata={
+            "credential_profile_id": str(profile.id),
+            "transport_name": "ssh",
+            "allowed_fallback_transports": ["telnet", "https", "http", "snmp"],
+            "allow_insecure_telnet": True,
+            "allow_insecure_http": True,
+        },
+    )
+
+    service = DiscoveryExecutionService(session, CollectorRegistry())
+    policy = service._resolve_transport_policy(target_view)
+
+    assert policy.transport_names == ["ssh"]
+    assert "telnet" not in policy.transport_names
+    assert "https" not in policy.transport_names
+    assert "http" not in policy.transport_names
+    assert "snmp" not in policy.transport_names
+
+
 @pytest.mark.anyio
 async def test_A_ssh_success_no_fallback_single_transport() -> None:
     session = _session()
@@ -607,6 +655,39 @@ async def test_E_host_unreachable_all_timeout_no_management() -> None:
 
 
 @pytest.mark.anyio
+async def test_E_generic_discovery_failure_is_reachable_no_management() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh", "telnet", "https"])
+    job = _job_with_profile(session, profile=profile)
+    registry = CollectorRegistry()
+    registry.register(
+        GenericDiscoveryFailCollector(
+            name="ssh-cisco", capabilities=frozenset({CollectorCapability.SSH})
+        )
+    )
+    registry.register(
+        GenericDiscoveryFailCollector(
+            name="telnet-cisco", capabilities=frozenset({CollectorCapability.TELNET})
+        )
+    )
+    registry.register(
+        GenericDiscoveryFailCollector(
+            name="https-cisco", capabilities=frozenset({CollectorCapability.HTTPS})
+        )
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.executed is True
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
+    assert result.result_state == DiscoveryResultState.REACHABLE_NO_MANAGEMENT.value
+    assert result.failure_code == DiscoveryFailureCode.DISCOVERY_FAILED.value
+
+
+@pytest.mark.anyio
 async def test_F_ssh_auth_fail_continue_chain_telnet_succeeds() -> None:
     session = _session()
     profile = _credential_profile(session, transport_types=["ssh", "telnet"])
@@ -725,7 +806,52 @@ async def test_H_allow_insecure_telnet_false_skips_telnet_in_chain() -> None:
 
 
 @pytest.mark.anyio
-async def test_I_legacy_ssh_only_profile_no_profile_defaults_to_ssh() -> None:
+async def test_I_target_fallback_not_supported_by_profile_is_skipped() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh"])
+    job = _job_with_profile(
+        session,
+        profile=profile,
+        fallback_transports=["telnet", "https"],
+        allow_insecure_telnet=True,
+    )
+    registry = CollectorRegistry()
+    registry.register(
+        SshAuthFailCollector(
+            name="ssh-cisco", capabilities=frozenset({CollectorCapability.SSH})
+        )
+    )
+    registry.register(
+        TelnetSuccessCollector(
+            name="telnet-cisco", capabilities=frozenset({CollectorCapability.TELNET})
+        )
+    )
+    registry.register(
+        HttpsSuccessCollector(
+            name="https-cisco", capabilities=frozenset({CollectorCapability.HTTPS})
+        )
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.executed is True
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
+    assert result.result_state == DiscoveryResultState.AUTHENTICATION_FAILED.value
+    assert result.selected_transport is None
+    attempts = sorted(
+        session.execute(select(DiscoveryTransportAttemptRecord)).scalars().all(),
+        key=lambda a: a.attempt_order,
+    )
+    assert [attempt.transport for attempt in attempts] == ["ssh"]
+    assert attempts[0].result == "failed"
+    assert attempts[0].failure_code == DiscoveryFailureCode.AUTHENTICATION_FAILED.value
+
+
+@pytest.mark.anyio
+async def test_J_legacy_ssh_only_profile_no_profile_defaults_to_ssh() -> None:
     session = _session()
     job = _job_legacy(session, collector_name="legacy-ssh")
     registry = CollectorRegistry()
