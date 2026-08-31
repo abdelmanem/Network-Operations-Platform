@@ -1,0 +1,9 @@
+
+ RUN  v4.1.10 C:/trae/Network-Operations-Platform/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  17:21:07
+   Duration  8.87s (transform 243ms, setup 299ms, import 351ms, tests 6.12s, environment 1.79s)
+

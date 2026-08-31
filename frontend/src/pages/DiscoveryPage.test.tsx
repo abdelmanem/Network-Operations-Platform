@@ -79,6 +79,7 @@ describe('DiscoveryPage', () => {
     updateCredentialProfile.mockReset()
     getRunSummary.mockResolvedValue(null)
     getTransportAttempts.mockResolvedValue([])
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   it('renders a credential-profile empty state and allows creation from the discovery workflow', async () => {
@@ -798,11 +799,14 @@ describe('DiscoveryPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('first-target')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /delete target first-target/i }),
+      ).toBeInTheDocument()
     })
 
-    const deleteButtons = screen.getAllByRole('button', { name: /delete target/i })
-    fireEvent.click(deleteButtons[0])
+    fireEvent.click(
+      screen.getByRole('button', { name: /delete target first-target/i }),
+    )
 
     await waitFor(() => {
       expect(deleteTarget).toHaveBeenCalledWith('target-1')
@@ -856,7 +860,9 @@ describe('DiscoveryPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(/cisco production/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /manage profiles/i }),
+      ).toBeInTheDocument()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /manage profiles/i }))
@@ -865,7 +871,7 @@ describe('DiscoveryPage', () => {
       expect(screen.getByText(/edit credential profile/i)).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /delete profile/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^delete profile$/i }))
 
     await waitFor(() => {
       expect(deleteCredentialProfile).toHaveBeenCalledWith(profileId)

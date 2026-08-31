@@ -1,0 +1,2266 @@
+
+ RUN  v4.1.10 C:/trae/Network-Operations-Platform/frontend
+
+stdout | src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting an existing credential profile via the profile editor
+[SelectedTargetPanel] activeProfile computed: {
+  selectedProfileId: '',
+  foundInArray: false,
+  foundProfile: undefined,
+  fallbackProfile: null,
+  result: null,
+  resultProfileId: undefined
+}
+[SelectedTargetPanel] Setting selectedProfileId: {
+  newProfileId: '',
+  targetId: undefined,
+  targetCredentialProfileId: undefined,
+  profileProfileId: undefined
+}
+[SelectedTargetPanel] Updated testTransport from activeProfile: {
+  activeProfile: undefined,
+  transportTypes: undefined,
+  testTransport: 'ssh'
+}
+
+stdout | src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting an existing credential profile via the profile editor
+[SelectedTargetPanel] activeProfile computed: {
+  selectedProfileId: '',
+  foundInArray: false,
+  foundProfile: undefined,
+  fallbackProfile: {
+    profile_id: 'profile-cisco-prod',
+    tenant_id: 'default',
+    name: 'Cisco Production',
+    description: 'Production environment',
+    vendor: 'cisco',
+    platform: 'cisco-iosxe',
+    credential_type: 'ssh_password',
+    username: 'netops',
+    transport_types: [ 'ssh' ],
+    provider_reference: 'vault-prod-ssh',
+    enabled: true,
+    created_at: '2026-08-19T10:00:00Z',
+    updated_at: '2026-08-19T10:00:00Z'
+  },
+  result: {
+    profile_id: 'profile-cisco-prod',
+    tenant_id: 'default',
+    name: 'Cisco Production',
+    description: 'Production environment',
+    vendor: 'cisco',
+    platform: 'cisco-iosxe',
+    credential_type: 'ssh_password',
+    username: 'netops',
+    transport_types: [ 'ssh' ],
+    provider_reference: 'vault-prod-ssh',
+    enabled: true,
+    created_at: '2026-08-19T10:00:00Z',
+    updated_at: '2026-08-19T10:00:00Z'
+  },
+  resultProfileId: 'profile-cisco-prod'
+}
+
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > renders a credential-profile empty state and allows creation from the discovery workflow
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > hides the secret provider reference from the normal summary and reveals it in advanced details only
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result success to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result invalid_credential_profile to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result invalid_credential_profile to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result unsupported_transport to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result success to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result success to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > maps backend result success to the correct operator-facing status
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > creates a target, starts a job, and displays terminal evidence
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > labels collector metadata separately and shows the discovered device identity
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > displays accurate summary for CIDR discovery with succeeded and unavailable addresses
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows selecting another credential profile for an existing target and saving changes
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting a target from the sidebar
+stdout | src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting an existing credential profile via the profile editor
+[SelectedTargetPanel] Setting selectedProfileId: {
+  newProfileId: 'profile-cisco-prod',
+  targetId: 'target-1',
+  targetCredentialProfileId: 'profile-cisco-prod',
+  profileProfileId: 'profile-cisco-prod'
+}
+[SelectedTargetPanel] Updated testTransport from activeProfile: {
+  activeProfile: 'profile-cisco-prod',
+  transportTypes: [ 'ssh' ],
+  testTransport: 'ssh'
+}
+
+stdout | src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting an existing credential profile via the profile editor
+[SelectedTargetPanel] activeProfile computed: {
+  selectedProfileId: 'profile-cisco-prod',
+  foundInArray: true,
+  foundProfile: {
+    profile_id: 'profile-cisco-prod',
+    tenant_id: 'default',
+    name: 'Cisco Production',
+    description: 'Production environment',
+    vendor: 'cisco',
+    platform: 'cisco-iosxe',
+    credential_type: 'ssh_password',
+    username: 'netops',
+    transport_types: [ 'ssh' ],
+    provider_reference: 'vault-prod-ssh',
+    enabled: true,
+    created_at: '2026-08-19T10:00:00Z',
+    updated_at: '2026-08-19T10:00:00Z'
+  },
+  fallbackProfile: {
+    profile_id: 'profile-cisco-prod',
+    tenant_id: 'default',
+    name: 'Cisco Production',
+    description: 'Production environment',
+    vendor: 'cisco',
+    platform: 'cisco-iosxe',
+    credential_type: 'ssh_password',
+    username: 'netops',
+    transport_types: [ 'ssh' ],
+    provider_reference: 'vault-prod-ssh',
+    enabled: true,
+    created_at: '2026-08-19T10:00:00Z',
+    updated_at: '2026-08-19T10:00:00Z'
+  },
+  result: {
+    profile_id: 'profile-cisco-prod',
+    tenant_id: 'default',
+    name: 'Cisco Production',
+    description: 'Production environment',
+    vendor: 'cisco',
+    platform: 'cisco-iosxe',
+    credential_type: 'ssh_password',
+    username: 'netops',
+    transport_types: [ 'ssh' ],
+    provider_reference: 'vault-prod-ssh',
+    enabled: true,
+    created_at: '2026-08-19T10:00:00Z',
+    updated_at: '2026-08-19T10:00:00Z'
+  },
+  resultProfileId: 'profile-cisco-prod'
+}
+
+ ├ù src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting an existing credential profile via the profile editor 1162ms
+   ΓåÆ Found multiple elements with the text: /cisco production/i
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<strong>[39m
+  [0mCisco Production[0m
+[36m</strong>[39m
+
+Ignored nodes: comments, script, style
+[36m<option[39m
+  [33mvalue[39m=[32m"profile-cisco-prod"[39m
+[36m>[39m
+  [0mCisco Production[0m
+[36m</option>[39m
+
+Ignored nodes: comments, script, style
+[36m<strong>[39m
+  [0mCisco Production[0m
+[36m</strong>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"page discovery-page"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"discovery-header"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-header-main"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-eyebrow"[39m
+          [36m>[39m
+            [0mNETWORK OPERATIONS[0m
+          [36m</div>[39m
+          [36m<h1>[39m
+            [0mNetwork Discovery[0m
+          [36m</h1>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"muted"[39m
+          [36m>[39m
+            [0mDiscover and validate managed network devices using configured credential profiles.[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-header-actions"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33maria-label[39m=[32m"Refresh"[39m
+            [33mclass[39m=[32m"discovery-btn discovery-btn-icon"[39m
+            [33mtitle[39m=[32m"Refresh"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0mΓå╗[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"discovery-btn discovery-btn-primary"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0mStart discovery[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"discovery-status-bar"[39m
+      [36m>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"discovery-status-indicator discovery-status-ready"[39m
+        [36m>[39m
+          [0mReady[0m
+        [36m</span>[39m
+        [36m<span[39m
+          [33mclass[39m=[32m"discovery-status-meta"[39m
+        [36m>[39m
+          [0mSelect a target and start discovery when credentials are validated.[0m
+        [36m</span>[39m
+      [36m</div>[39m
+      [36m<section[39m
+        [33mclass[39m=[32m"discovery-panel discovery-overview"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-panel-header"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<h2>[39m
+              [0mDiscovery overview[0m
+            [36m</h2>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"discovery-panel-subtitle"[39m
+            [36m>[39m
+              [0mCurrent inventory and operational status[0m
+            [36m</p>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-overview-grid"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-overview-item"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mTargets[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0m1[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-overview-item"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mCredential profiles[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0m1[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-overview-item"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mActive jobs[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0m0[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-overview-item"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mSelected target[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mcisco-prod[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"discovery-workspace"[39m
+      [36m>[39m
+        [36m<aside[39m
+          [33mclass[39m=[32m"discovery-panel discovery-targets-sidebar"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-panel-header"[39m
+          [36m>[39m
+            [36m<h2>[39m
+              [0mTargets[0m
+            [36m</h2>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-target-search"[39m
+          [36m>[39m
+            [36m<input[39m
+              [33maria-label[39m=[32m"Search targets"[39m
+              [33mplaceholder[39m=[32m"Search by name, address, or platformΓÇª"[39m
+              [33mtype[39m=[32m"search"[39m
+              [33mvalue[39m=[32m""[39m
+            [36m/>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-targets-list"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-target-item-wrap"[39m
+            [36m>[39m
+              [36m<label[39m
+                [33mclass[39m=[32m"discovery-target-checkbox-wrap"[39m
+              [36m>[39m
+                [36m<input[39m
+                  [33maria-label[39m=[32m"Select target cisco-prod"[39m
+                  [33mtype[39m=[32m"checkbox"[39m
+                [36m/>[39m
+              [36m</label>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"discovery-target-item discovery-target-item-selected"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"discovery-target-dot"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"discovery-target-item-main"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"discovery-target-item-name"[39m
+                  [36m>[39m
+                    [0mcisco-prod[0m
+                  [36m</span>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"discovery-target-item-address"[39m
+                  [36m>[39m
+                    [0m192.168.1.0/24[0m
+                  [36m</span>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"discovery-target-item-meta"[39m
+                  [36m>[39m
+                    [36m<span>[39m
+                      [0mCisco IOS[0m
+                    [36m</span>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"discovery-transport-badge"[39m
+                    [36m>[39m
+                      [0mSSH[0m
+                    [36m</span>[39m
+                  [36m</span>[39m
+                [36m</span>[39m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"Delete target cisco-prod"[39m
+                [33mclass[39m=[32m"discovery-btn discovery-btn-ghost discovery-btn-compact discovery-target-delete"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mDelete target[0m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-targets-footer"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"discovery-btn discovery-btn-ghost"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mSelect all[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"discovery-btn discovery-btn-secondary"[39m
+              [33mdisabled[39m=[32m""[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mDelete selected ([0m
+              [0m0[0m
+              [0m)[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"discovery-btn discovery-btn-ghost"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m+ Add target[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</aside>[39m
+        [36m<section[39m
+          [33mclass[39m=[32m"discovery-panel discovery-target-detail"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-target-detail-header"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-target-title"[39m
+            [36m>[39m
+              [36m<h2>[39m
+                [0mcisco-prod[0m
+              [36m</h2>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-target-address"[39m
+              [36m>[39m
+                [0m192.168.1.0/24[0m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"discovery-platform-badge"[39m
+            [36m>[39m
+              [0mCisco IOS[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-facts-grid"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-fact"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mTarget[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0mcisco-prod[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-fact"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mAddress[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0m192.168.1.0/24[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-fact"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mPlatform[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0mCisco IOS[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-fact"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mScope[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0mCIDR network[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-fact"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mTransport[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0mSSH[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-fact"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mCredential[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0mCisco Production[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-credential-section"[39m
+          [36m>[39m
+            [36m<h3>[39m
+              [0mCredential profile[0m
+            [36m</h3>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-credential-select"[39m
+            [36m>[39m
+              [36m<label[39m
+                [33mfor[39m=[32m"selected-credential-profile"[39m
+              [36m>[39m
+                [0mCredential profile[0m
+                [36m<select[39m
+                  [33mid[39m=[32m"selected-credential-profile"[39m
+                [36m>[39m
+                  [36m<option[39m
+                    [33mvalue[39m=[32m""[39m
+                  [36m>[39m
+                    [0mSelect credential profile[0m
+                  [36m</option>[39m
+                  [36m<option[39m
+                    [33mvalue[39m=[32m"profile-cisco-prod"[39m
+                  [36m>[39m
+                    [0mCisco Production[0m
+                  [36m</option>[39m
+                [36m</select>[39m
+              [36m</label>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-credential-details"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-credential-detail"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mUsername[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mnetops[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-credential-detail"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mTransport[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mSSH[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-credential-detail"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mSecret[0m
+                [36m</span>[39m
+                [36m<strong[39m
+                  [33mclass[39m=[32m"discovery-secret-pending"[39m
+                [36m>[39m
+                  [0mNot tested[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<details[39m
+              [33mclass[39m=[32m"discovery-secret-advanced"[39m
+            [36m>[39m
+              [36m<summary>[39m
+                [0mAdvanced / Secret provider details[0m
+              [36m</summary>[39m
+            [36m</details>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"discovery-security-note"[39m
+            [36m>[39m
+              [0mEnvironment secret provider: secret material is resolved by the backend at execution time and is never stored in the credential profile. This is not the password.[0m
+            [36m</p>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-credential-actions"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"discovery-btn discovery-btn-secondary discovery-btn-compact"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mTest credential[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"discovery-btn discovery-btn-ghost discovery-btn-compact"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mManage profiles[0m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-plan"[39m
+          [36m>[39m
+            [36m<h3>[39m
+              [0mDiscovery plan[0m
+            [36m</h3>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-plan-grid"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mScope[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mCIDR network[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mVendor[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mcisco[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mPlatform[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mCisco IOS[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mTransport[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mSSH[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mCredential[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mCisco Production[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mFallback[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mSNMP / HTTP[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</section>[39m
+      [36m</div>[39m
+      [36m<section[39m
+        [33mclass[39m=[32m"discovery-panel discovery-execution"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-panel-header"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<h2>[39m
+              [0mDiscovery execution[0m
+            [36m</h2>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"discovery-panel-subtitle"[39m
+            [36m>[39m
+              [0mSelected target: [0m
+              [0mcisco-prod[0m
+              [0m ┬╖ [0m
+              [0m192.168.1.0/24[0m
+            [36m</p>[39m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"discovery-btn discovery-btn-primary discovery-btn-compact"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0mStart discovery[0m
+          [36m</button>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"page discovery-page"[39m
+      [36m>[39m
+        [36m<header[39m
+          [33mclass[39m=[32m"discovery-header"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-header-main"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-eyebrow"[39m
+            [36m>[39m
+              [0mNETWORK OPERATIONS[0m
+            [36m</div>[39m
+            [36m<h1>[39m
+              [0mNetwork Discovery[0m
+            [36m</h1>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"muted"[39m
+            [36m>[39m
+              [0mDiscover and validate managed network devices using configured credential profiles.[0m
+            [36m</p>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-header-actions"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"Refresh"[39m
+              [33mclass[39m=[32m"discovery-btn discovery-btn-icon"[39m
+              [33mtitle[39m=[32m"Refresh"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mΓå╗[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"discovery-btn discovery-btn-primary"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mStart discovery[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</header>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-status-bar"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"discovery-status-indicator discovery-status-ready"[39m
+          [36m>[39m
+            [0mReady[0m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"discovery-status-meta"[39m
+          [36m>[39m
+            [0mSelect a target and start discovery when credentials are validated.[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33mclass[39m=[32m"discovery-panel discovery-overview"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-panel-header"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<h2>[39m
+                [0mDiscovery overview[0m
+              [36m</h2>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"discovery-panel-subtitle"[39m
+              [36m>[39m
+                [0mCurrent inventory and operational status[0m
+              [36m</p>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-overview-grid"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-overview-item"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mTargets[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0m1[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-overview-item"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mCredential profiles[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0m1[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-overview-item"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mActive jobs[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0m0[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-overview-item"[39m
+            [36m>[39m
+              [36m<span>[39m
+                [0mSelected target[0m
+              [36m</span>[39m
+              [36m<strong>[39m
+                [0mcisco-prod[0m
+              [36m</strong>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</section>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"discovery-workspace"[39m
+        [36m>[39m
+          [36m<aside[39m
+            [33mclass[39m=[32m"discovery-panel discovery-targets-sidebar"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-panel-header"[39m
+            [36m>[39m
+              [36m<h2>[39m
+                [0mTargets[0m
+              [36m</h2>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-target-search"[39m
+            [36m>[39m
+              [36m<input[39m
+                [33maria-label[39m=[32m"Search targets"[39m
+                [33mplaceholder[39m=[32m"Search by name, address, or platformΓÇª"[39m
+                [33mtype[39m=[32m"search"[39m
+                [33mvalue[39m=[32m""[39m
+              [36m/>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-targets-list"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-target-item-wrap"[39m
+              [36m>[39m
+                [36m<label[39m
+                  [33mclass[39m=[32m"discovery-target-checkbox-wrap"[39m
+                [36m>[39m
+                  [36m<input[39m
+                    [33maria-label[39m=[32m"Select target cisco-prod"[39m
+                    [33mtype[39m=[32m"checkbox"[39m
+                  [36m/>[39m
+                [36m</label>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"discovery-target-item discovery-target-item-selected"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"discovery-target-dot"[39m
+                  [36m/>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"discovery-target-item-main"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"discovery-target-item-name"[39m
+                    [36m>[39m
+                      [0mcisco-prod[0m
+                    [36m</span>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"discovery-target-item-address"[39m
+                    [36m>[39m
+                      [0m192.168.1.0/24[0m
+                    [36m</span>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"discovery-target-item-meta"[39m
+                    [36m>[39m
+                      [36m<span>[39m
+                        [0mCisco IOS[0m
+                      [36m</span>[39m
+                      [36m<span[39m
+                        [33mclass[39m=[32m"discovery-transport-badge"[39m
+                      [36m>[39m
+                        [0mSSH[0m
+                      [36m</span>[39m
+                    [36m</span>[39m
+                  [36m</span>[39m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33maria-label[39m=[32m"Delete target cisco-prod"[39m
+                  [33mclass[39m=[32m"discovery-btn discovery-btn-ghost discovery-btn-compact discovery-target-delete"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mDelete target[0m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-targets-footer"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"discovery-btn discovery-btn-ghost"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mSelect all[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"discovery-btn discovery-btn-secondary"[39m
+                [33mdisabled[39m=[32m""[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mDelete selected ([0m
+                [0m0[0m
+                [0m)[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"discovery-btn discovery-btn-ghost"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m+ Add target[0m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</aside>[39m
+          [36m<section[39m
+            [33mclass[39m=[32m"discovery-panel discovery-target-detail"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-target-detail-header"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-target-title"[39m
+              [36m>[39m
+                [36m<h2>[39m
+                  [0mcisco-prod[0m
+                [36m</h2>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-target-address"[39m
+                [36m>[39m
+                  [0m192.168.1.0/24[0m
+                [36m</div>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"discovery-platform-badge"[39m
+              [36m>[39m
+                [0mCisco IOS[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-facts-grid"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mTarget[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mcisco-prod[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mAddress[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0m192.168.1.0/24[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mPlatform[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mCisco IOS[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mScope[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mCIDR network[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mTransport[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mSSH[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-fact"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0mCredential[0m
+                [36m</span>[39m
+                [36m<strong>[39m
+                  [0mCisco Production[0m
+                [36m</strong>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-credential-section"[39m
+            [36m>[39m
+              [36m<h3>[39m
+                [0mCredential profile[0m
+              [36m</h3>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-credential-select"[39m
+              [36m>[39m
+                [36m<label[39m
+                  [33mfor[39m=[32m"selected-credential-profile"[39m
+                [36m>[39m
+                  [0mCredential profile[0m
+                  [36m<select[39m
+                    [33mid[39m=[32m"selected-credential-profile"[39m
+                  [36m>[39m
+                    [36m<option[39m
+                      [33mvalue[39m=[32m""[39m
+                    [36m>[39m
+                      [0mSelect credential profile[0m
+                    [36m</option>[39m
+                    [36m<option[39m
+                      [33mvalue[39m=[32m"profile-cisco-prod"[39m
+                    [36m>[39m
+                      [0mCisco Production[0m
+                    [36m</option>[39m
+                  [36m</select>[39m
+                [36m</label>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-credential-details"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-credential-detail"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mUsername[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mnetops[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-credential-detail"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mTransport[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mSSH[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-credential-detail"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mSecret[0m
+                  [36m</span>[39m
+                  [36m<strong[39m
+                    [33mclass[39m=[32m"discovery-secret-pending"[39m
+                  [36m>[39m
+                    [0mNot tested[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+              [36m</div>[39m
+              [36m<details[39m
+                [33mclass[39m=[32m"discovery-secret-advanced"[39m
+              [36m>[39m
+                [36m<summary>[39m
+                  [0mAdvanced / Secret provider details[0m
+                [36m</summary>[39m
+              [36m</details>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"discovery-security-note"[39m
+              [36m>[39m
+                [0mEnvironment secret provider: secret material is resolved by the backend at execution time and is never stored in the credential profile. This is not the password.[0m
+              [36m</p>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-credential-actions"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"discovery-btn discovery-btn-secondary discovery-btn-compact"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mTest credential[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"discovery-btn discovery-btn-ghost discovery-btn-compact"[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mManage profiles[0m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"discovery-plan"[39m
+            [36m>[39m
+              [36m<h3>[39m
+                [0mDiscovery plan[0m
+              [36m</h3>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"discovery-plan-grid"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-fact"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mScope[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mCIDR network[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-fact"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mVendor[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mcisco[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-fact"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mPlatform[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mCisco IOS[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-fact"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mTransport[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mSSH[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-fact"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mCredential[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mCisco Production[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"discovery-fact"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0mFallback[0m
+                  [36m</span>[39m
+                  [36m<strong>[39m
+                    [0mSNMP / HTTP[0m
+                  [36m</strong>[39m
+                [36m</div>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+          [36m</section>[39m
+        [36m</div>[39m
+        [36m<section[39m
+          [33mclass[39m=[32m"discovery-panel discovery-execution"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"discovery-panel-header"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<h2>[39m
+                [0mDiscovery execution[0m
+              [36m</h2>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"discovery-panel-subtitle"[39m
+              [36m>[39m
+                [0mSelected target: [0m
+                [0mcisco-prod[0m
+                [0m ┬╖ [0m
+                [0m192.168.1.0/24[0m
+              [36m</p>[39m
+            [36m</div>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"discovery-btn discovery-btn-primary discovery-btn-compact"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mStart discovery[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</section>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</body>[39m
+[36m</html>[39m
+ Γåô src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows editing an existing credential profile via Manage profiles button and updates it
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ» Failed Tests 1 ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»
+
+ FAIL  src/pages/DiscoveryPage.test.tsx > DiscoveryPage > allows deleting an existing credential profile via the profile editor
+TestingLibraryElementError: Found multiple elements with the text: /cisco production/i
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+<strong>
+  Cisco Production
+</strong>
+
+Ignored nodes: comments, script, style
+<option
+  value="profile-cisco-prod"
+>
+  Cisco Production
+</option>
+
+Ignored nodes: comments, script, style
+<strong>
+  Cisco Production
+</strong>
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div
+      class="page discovery-page"
+    >
+      <header
+        class="discovery-header"
+      >
+        <div
+          class="discovery-header-main"
+        >
+          <div
+            class="discovery-eyebrow"
+          >
+            NETWORK OPERATIONS
+          </div>
+          <h1>
+            Network Discovery
+          </h1>
+          <p
+            class="muted"
+          >
+            Discover and validate managed network devices using configured credential profiles.
+          </p>
+        </div>
+        <div
+          class="discovery-header-actions"
+        >
+          <button
+            aria-label="Refresh"
+            class="discovery-btn discovery-btn-icon"
+            title="Refresh"
+            type="button"
+          >
+            Γå╗
+          </button>
+          <button
+            class="discovery-btn discovery-btn-primary"
+            type="button"
+          >
+            Start discovery
+          </button>
+        </div>
+      </header>
+      <div
+        class="discovery-status-bar"
+      >
+        <span
+          class="discovery-status-indicator discovery-status-ready"
+        >
+          Ready
+        </span>
+        <span
+          class="discovery-status-meta"
+        >
+          Select a target and start discovery when credentials are validated.
+        </span>
+      </div>
+      <section
+        class="discovery-panel discovery-overview"
+      >
+        <div
+          class="discovery-panel-header"
+        >
+          <div>
+            <h2>
+              Discovery overview
+            </h2>
+            <p
+              class="discovery-panel-subtitle"
+            >
+              Current inventory and operational status
+            </p>
+          </div>
+        </div>
+        <div
+          class="discovery-overview-grid"
+        >
+          <div
+            class="discovery-overview-item"
+          >
+            <span>
+              Targets
+            </span>
+            <strong>
+              1
+            </strong>
+          </div>
+          <div
+            class="discovery-overview-item"
+          >
+            <span>
+              Credential profiles
+            </span>
+            <strong>
+              1
+            </strong>
+          </div>
+          <div
+            class="discovery-overview-item"
+          >
+            <span>
+              Active jobs
+            </span>
+            <strong>
+              0
+            </strong>
+          </div>
+          <div
+            class="discovery-overview-item"
+          >
+            <span>
+              Selected target
+            </span>
+            <strong>
+              cisco-prod
+            </strong>
+          </div>
+        </div>
+      </section>
+      <div
+        class="discovery-workspace"
+      >
+        <aside
+          class="discovery-panel discovery-targets-sidebar"
+        >
+          <div
+            class="discovery-panel-header"
+          >
+            <h2>
+              Targets
+            </h2>
+          </div>
+          <div
+            class="discovery-target-search"
+          >
+            <input
+              aria-label="Search targets"
+              placeholder="Search by name, address, or platformΓÇª"
+              type="search"
+              value=""
+            />
+          </div>
+          <div
+            class="discovery-targets-list"
+          >
+            <div
+              class="discovery-target-item-wrap"
+            >
+              <label
+                class="discovery-target-checkbox-wrap"
+              >
+                <input
+                  aria-label="Select target cisco-prod"
+                  type="checkbox"
+                />
+              </label>
+              <button
+                class="discovery-target-item discovery-target-item-selected"
+                type="button"
+              >
+                <span
+                  class="discovery-target-dot"
+                />
+                <span
+                  class="discovery-target-item-main"
+                >
+                  <span
+                    class="discovery-target-item-name"
+                  >
+                    cisco-prod
+                  </span>
+                  <span
+                    class="discovery-target-item-address"
+                  >
+                    192.168.1.0/24
+                  </span>
+                  <span
+                    class="discovery-target-item-meta"
+                  >
+                    <span>
+                      Cisco IOS
+                    </span>
+                    <span
+                      class="discovery-transport-badge"
+                    >
+                      SSH
+                    </span>
+                  </span>
+                </span>
+              </button>
+              <button
+                aria-label="Delete target cisco-prod"
+                class="discovery-btn discovery-btn-ghost discovery-btn-compact discovery-target-delete"
+                type="button"
+              >
+                Delete target
+              </button>
+            </div>
+          </div>
+          <div
+            class="discovery-targets-footer"
+          >
+            <button
+              class="discovery-btn discovery-btn-ghost"
+              type="button"
+            >
+              Select all
+            </button>
+            <button
+              class="discovery-btn discovery-btn-secondary"
+              disabled=""
+              type="button"
+            >
+              Delete selected (
+              0
+              )
+            </button>
+            <button
+              class="discovery-btn discovery-btn-ghost"
+              type="button"
+            >
+              + Add target
+            </button>
+          </div>
+        </aside>
+        <section
+          class="discovery-panel discovery-target-detail"
+        >
+          <div
+            class="discovery-target-detail-header"
+          >
+            <div
+              class="discovery-target-title"
+            >
+              <h2>
+                cisco-prod
+              </h2>
+              <div
+                class="discovery-target-address"
+              >
+                192.168.1.0/24
+              </div>
+            </div>
+            <span
+              class="discovery-platform-badge"
+            >
+              Cisco IOS
+            </span>
+          </div>
+          <div
+            class="discovery-facts-grid"
+          >
+            <div
+              class="discovery-fact"
+            >
+              <span>
+                Target
+              </span>
+              <strong>
+                cisco-prod
+              </strong>
+            </div>
+            <div
+              class="discovery-fact"
+            >
+              <span>
+                Address
+              </span>
+              <strong>
+                192.168.1.0/24
+              </strong>
+            </div>
+            <div
+              class="discovery-fact"
+            >
+              <span>
+                Platform
+              </span>
+              <strong>
+                Cisco IOS
+              </strong>
+            </div>
+            <div
+              class="discovery-fact"
+            >
+              <span>
+                Scope
+              </span>
+              <strong>
+                CIDR network
+              </strong>
+            </div>
+            <div
+              class="discovery-fact"
+            >
+              <span>
+                Transport
+              </span>
+              <strong>
+                SSH
+              </strong>
+            </div>
+            <div
+              class="discovery-fact"
+            >
+              <span>
+                Credential
+              </span>
+              <strong>
+                Cisco Production
+              </strong>
+            </div>
+          </div>
+          <div
+            class="discovery-credential-section"
+          >
+            <h3>
+              Credential profile
+            </h3>
+            <div
+              class="discovery-credential-select"
+            >
+              <label
+                for="selected-credential-profile"
+              >
+                Credential profile
+                <select
+                  id="selected-credential-profile"
+                >
+                  <option
+                    value=""
+                  >
+                    Select credential profile
+                  </option>
+                  <option
+                    value="profile-cisco-prod"
+                  >
+                    Cisco Production
+                  </option>
+                </select>
+              </label>
+            </div>
+            <div
+              class="discovery-credential-details"
+            >
+              <div
+                class="discovery-credential-detail"
+              >
+                <span>
+                  Username
+                </span>
+                <strong>
+                  netops
+                </strong>
+              </div>
+              <div
+                class="discovery-credential-detail"
+              >
+                <span>
+                  Transport
+                </span>
+                <strong>
+                  SSH
+                </strong>
+              </div>
+              <div
+                class="discovery-credential-detail"
+              >
+                <span>
+                  Secret
+                </span>
+                <strong
+                  class="discovery-secret-pending"
+                >
+                  Not tested
+                </strong>
+              </div>
+            </div>
+            <details
+              class="discovery-secret-advanced"
+            >
+              <summary>
+                Advanced / Secret provider details
+              </summary>
+            </details>
+            <p
+              class="discovery-security-note"
+            >
+              Environment secret provider: secret material is resolved by the backend at execution time and is never stored in the credential profile. This is not the password.
+            </p>
+            <div
+              class="discovery-credential-actions"
+            >
+              <button
+                class="discovery-btn discovery-btn-secondary discovery-btn-compact"
+                type="button"
+              >
+                Test credential
+              </button>
+              <button
+                class="discovery-btn discovery-btn-ghost discovery-btn-compact"
+                type="button"
+              >
+                Manage profiles
+              </button>
+            </div>
+          </div>
+          <div
+            class="discovery-plan"
+          >
+            <h3>
+              Discovery plan
+            </h3>
+            <div
+              class="discovery-plan-grid"
+            >
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Scope
+                </span>
+                <strong>
+                  CIDR network
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Vendor
+                </span>
+                <strong>
+                  cisco
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Platform
+                </span>
+                <strong>
+                  Cisco IOS
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Transport
+                </span>
+                <strong>
+                  SSH
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Credential
+                </span>
+                <strong>
+                  Cisco Production
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Fallback
+                </span>
+                <strong>
+                  SNMP / HTTP
+                </strong>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <section
+        class="discovery-panel discovery-execution"
+      >
+        <div
+          class="discovery-panel-header"
+        >
+          <div>
+            <h2>
+              Discovery execution
+            </h2>
+            <p
+              class="discovery-panel-subtitle"
+            >
+              Selected target: 
+              cisco-prod
+               ┬╖ 
+              192.168.1.0/24
+            </p>
+          </div>
+          <button
+            class="discovery-btn discovery-btn-primary discovery-btn-compact"
+            type="button"
+          >
+            Start discovery
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+
+Ignored nodes: comments, script, style
+<html>
+  <head />
+  <body>
+    <div>
+      <div
+        class="page discovery-page"
+      >
+        <header
+          class="discovery-header"
+        >
+          <div
+            class="discovery-header-main"
+          >
+            <div
+              class="discovery-eyebrow"
+            >
+              NETWORK OPERATIONS
+            </div>
+            <h1>
+              Network Discovery
+            </h1>
+            <p
+              class="muted"
+            >
+              Discover and validate managed network devices using configured credential profiles.
+            </p>
+          </div>
+          <div
+            class="discovery-header-actions"
+          >
+            <button
+              aria-label="Refresh"
+              class="discovery-btn discovery-btn-icon"
+              title="Refresh"
+              type="button"
+            >
+              Γå╗
+            </button>
+            <button
+              class="discovery-btn discovery-btn-primary"
+              type="button"
+            >
+              Start discovery
+            </button>
+          </div>
+        </header>
+        <div
+          class="discovery-status-bar"
+        >
+          <span
+            class="discovery-status-indicator discovery-status-ready"
+          >
+            Ready
+          </span>
+          <span
+            class="discovery-status-meta"
+          >
+            Select a target and start discovery when credentials are validated.
+          </span>
+        </div>
+        <section
+          class="discovery-panel discovery-overview"
+        >
+          <div
+            class="discovery-panel-header"
+          >
+            <div>
+              <h2>
+                Discovery overview
+              </h2>
+              <p
+                class="discovery-panel-subtitle"
+              >
+                Current inventory and operational status
+              </p>
+            </div>
+          </div>
+          <div
+            class="discovery-overview-grid"
+          >
+            <div
+              class="discovery-overview-item"
+            >
+              <span>
+                Targets
+              </span>
+              <strong>
+                1
+              </strong>
+            </div>
+            <div
+              class="discovery-overview-item"
+            >
+              <span>
+                Credential profiles
+              </span>
+              <strong>
+                1
+              </strong>
+            </div>
+            <div
+              class="discovery-overview-item"
+            >
+              <span>
+                Active jobs
+              </span>
+              <strong>
+                0
+              </strong>
+            </div>
+            <div
+              class="discovery-overview-item"
+            >
+              <span>
+                Selected target
+              </span>
+              <strong>
+                cisco-prod
+              </strong>
+            </div>
+          </div>
+        </section>
+        <div
+          class="discovery-workspace"
+        >
+          <aside
+            class="discovery-panel discovery-targets-sidebar"
+          >
+            <div
+              class="discovery-panel-header"
+            >
+              <h2>
+                Targets
+              </h2>
+            </div>
+            <div
+              class="discovery-target-search"
+            >
+              <input
+                aria-label="Search targets"
+                placeholder="Search by name, address, or platformΓÇª"
+                type="search"
+                value=""
+              />
+            </div>
+            <div
+              class="discovery-targets-list"
+            >
+              <div
+                class="discovery-target-item-wrap"
+              >
+                <label
+                  class="discovery-target-checkbox-wrap"
+                >
+                  <input
+                    aria-label="Select target cisco-prod"
+                    type="checkbox"
+                  />
+                </label>
+                <button
+                  class="discovery-target-item discovery-target-item-selected"
+                  type="button"
+                >
+                  <span
+                    class="discovery-target-dot"
+                  />
+                  <span
+                    class="discovery-target-item-main"
+                  >
+                    <span
+                      class="discovery-target-item-name"
+                    >
+                      cisco-prod
+                    </span>
+                    <span
+                      class="discovery-target-item-address"
+                    >
+                      192.168.1.0/24
+                    </span>
+                    <span
+                      class="discovery-target-item-meta"
+                    >
+                      <span>
+                        Cisco IOS
+                      </span>
+                      <span
+                        class="discovery-transport-badge"
+                      >
+                        SSH
+                      </span>
+                    </span>
+                  </span>
+                </button>
+                <button
+                  aria-label="Delete target cisco-prod"
+                  class="discovery-btn discovery-btn-ghost discovery-btn-compact discovery-target-delete"
+                  type="button"
+                >
+                  Delete target
+                </button>
+              </div>
+            </div>
+            <div
+              class="discovery-targets-footer"
+            >
+              <button
+                class="discovery-btn discovery-btn-ghost"
+                type="button"
+              >
+                Select all
+              </button>
+              <button
+                class="discovery-btn discovery-btn-secondary"
+                disabled=""
+                type="button"
+              >
+                Delete selected (
+                0
+                )
+              </button>
+              <button
+                class="discovery-btn discovery-btn-ghost"
+                type="button"
+              >
+                + Add target
+              </button>
+            </div>
+          </aside>
+          <section
+            class="discovery-panel discovery-target-detail"
+          >
+            <div
+              class="discovery-target-detail-header"
+            >
+              <div
+                class="discovery-target-title"
+              >
+                <h2>
+                  cisco-prod
+                </h2>
+                <div
+                  class="discovery-target-address"
+                >
+                  192.168.1.0/24
+                </div>
+              </div>
+              <span
+                class="discovery-platform-badge"
+              >
+                Cisco IOS
+              </span>
+            </div>
+            <div
+              class="discovery-facts-grid"
+            >
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Target
+                </span>
+                <strong>
+                  cisco-prod
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Address
+                </span>
+                <strong>
+                  192.168.1.0/24
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Platform
+                </span>
+                <strong>
+                  Cisco IOS
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Scope
+                </span>
+                <strong>
+                  CIDR network
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Transport
+                </span>
+                <strong>
+                  SSH
+                </strong>
+              </div>
+              <div
+                class="discovery-fact"
+              >
+                <span>
+                  Credential
+                </span>
+                <strong>
+                  Cisco Production
+                </strong>
+              </div>
+            </div>
+            <div
+              class="discovery-credential-section"
+            >
+              <h3>
+                Credential profile
+              </h3>
+              <div
+                class="discovery-credential-select"
+              >
+                <label
+                  for="selected-credential-profile"
+                >
+                  Credential profile
+                  <select
+                    id="selected-credential-profile"
+                  >
+                    <option
+                      value=""
+                    >
+                      Select credential profile
+                    </option>
+                    <option
+                      value="profile-cisco-prod"
+                    >
+                      Cisco Production
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div
+                class="discovery-credential-details"
+              >
+                <div
+                  class="discovery-credential-detail"
+                >
+                  <span>
+                    Username
+                  </span>
+                  <strong>
+                    netops
+                  </strong>
+                </div>
+                <div
+                  class="discovery-credential-detail"
+                >
+                  <span>
+                    Transport
+                  </span>
+                  <strong>
+                    SSH
+                  </strong>
+                </div>
+                <div
+                  class="discovery-credential-detail"
+                >
+                  <span>
+                    Secret
+                  </span>
+                  <strong
+                    class="discovery-secret-pending"
+                  >
+                    Not tested
+                  </strong>
+                </div>
+              </div>
+              <details
+                class="discovery-secret-advanced"
+              >
+                <summary>
+                  Advanced / Secret provider details
+                </summary>
+              </details>
+              <p
+                class="discovery-security-note"
+              >
+                Environment secret provider: secret material is resolved by the backend at execution time and is never stored in the credential profile. This is not the password.
+              </p>
+              <div
+                class="discovery-credential-actions"
+              >
+                <button
+                  class="discovery-btn discovery-btn-secondary discovery-btn-compact"
+                  type="button"
+                >
+                  Test credential
+                </button>
+                <button
+                  class="discovery-btn discovery-btn-ghost discovery-btn-compact"
+                  type="button"
+                >
+                  Manage profiles
+                </button>
+              </div>
+            </div>
+            <div
+              class="discovery-plan"
+            >
+              <h3>
+                Discovery plan
+              </h3>
+              <div
+                class="discovery-plan-grid"
+              >
+                <div
+                  class="discovery-fact"
+                >
+                  <span>
+                    Scope
+                  </span>
+                  <strong>
+                    CIDR network
+                  </strong>
+                </div>
+                <div
+                  class="discovery-fact"
+                >
+                  <span>
+                    Vendor
+                  </span>
+                  <strong>
+                    cisco
+                  </strong>
+                </div>
+                <div
+                  class="discovery-fact"
+                >
+                  <span>
+                    Platform
+                  </span>
+                  <strong>
+                    Cisco IOS
+                  </strong>
+                </div>
+                <div
+                  class="discovery-fact"
+                >
+                  <span>
+                    Transport
+                  </span>
+                  <strong>
+                    SSH
+                  </strong>
+                </div>
+                <div
+                  class="discovery-fact"
+                >
+                  <span>
+                    Credential
+                  </span>
+                  <strong>
+                    Cisco Production
+                  </strong>
+                </div>
+                <div
+                  class="discovery-fact"
+                >
+                  <span>
+                    Fallback
+                  </span>
+                  <strong>
+                    SNMP / HTTP
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <section
+          class="discovery-panel discovery-execution"
+        >
+          <div
+            class="discovery-panel-header"
+          >
+            <div>
+              <h2>
+                Discovery execution
+              </h2>
+              <p
+                class="discovery-panel-subtitle"
+              >
+                Selected target: 
+                cisco-prod
+                 ┬╖ 
+                192.168.1.0/24
+              </p>
+            </div>
+            <button
+              class="discovery-btn discovery-btn-primary discovery-btn-compact"
+              type="button"
+            >
+              Start discovery
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>
+ Γ¥» Proxy.waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ Γ¥» src/pages/DiscoveryPage.test.tsx:860:11
+    858|     )
+    859|
+    860|     await waitFor(() => {
+       |           ^
+    861|       expect(screen.getByText(/cisco production/i)).toBeInTheDocument()
+    862|     })
+
+ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»ΓÄ»[1/1]ΓÄ»
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  17:19:52
+   Duration  5.40s (transform 409ms, setup 613ms, import 472ms, tests 1.17s, environment 2.40s)
+
