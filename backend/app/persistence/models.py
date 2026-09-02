@@ -353,6 +353,7 @@ class DiscoveryTransportAttemptRecord(BaseModel):
     attempt_order: Mapped[int] = mapped_column(Integer, nullable=False)
     result: Mapped[str] = mapped_column(String(48), nullable=False)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False

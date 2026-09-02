@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from collections.abc import Callable
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -138,7 +138,9 @@ class DiscoveryExecutionService:
                 )
 
         if profile is not None:
-            supported_transports = {str(t).lower() for t in (profile.transport_types or [])}
+            supported_transports = {
+                str(t).lower() for t in (profile.transport_types or [])
+            }
             policy = MultiTransportPolicy.from_credential_profile(
                 profile,
                 allow_insecure=allow_insecure,
@@ -203,6 +205,7 @@ class DiscoveryExecutionService:
             INSECURE_TRANSPORTS,
             TransportPolicyEntry,
         )
+
         profile_credential_type = (
             profile.credential_type if profile is not None else None
         )
@@ -290,8 +293,7 @@ class DiscoveryExecutionService:
                     collector_caps = frozenset(
                         CollectorCapability(str(value))
                         for value in requested
-                        if str(value)
-                        in {cap.value for cap in CollectorCapability}
+                        if str(value) in {cap.value for cap in CollectorCapability}
                     )
 
                 discovery_target = DiscoveryTarget(
@@ -335,6 +337,40 @@ class DiscoveryExecutionService:
                     continue
 
                 context = collector.build_context(discovery_context)
+                validate_payload = None
+                if hasattr(collector, "parser"):
+
+                    async def validate_payload(
+                        payload: dict[str, object],
+                        *,
+                        collector: BaseCollector = collector,
+                        context: CollectorContext = context,
+                    ) -> dict[str, object] | None:
+                        snapshot = await collector.normalize(
+                            context,
+                            payload,
+                            discovered_targets=(),
+                        )
+                        devices = getattr(snapshot, "devices", ())
+                        if not devices:
+                            return None
+                        device = devices[0]
+                        identity_fields = (
+                            "model",
+                            "serial_number",
+                            "software_version",
+                            "product_id",
+                            "base_mac",
+                            "uptime",
+                            "hardware_revision",
+                        )
+                        identity = {
+                            field: value
+                            for field in identity_fields
+                            if (value := getattr(device, field, None))
+                        }
+                        return identity or None
+
                 configs.append(
                     TransportAttemptConfig(
                         transport_name=entry.transport_name,
@@ -342,6 +378,7 @@ class DiscoveryExecutionService:
                         collector=collector,
                         context=context,
                         is_insecure=entry.is_insecure,
+                        validate_payload=validate_payload,
                     )
                 )
             except Exception:
@@ -483,7 +520,10 @@ class DiscoveryExecutionService:
                     ),
                 )
                 self._raise_if_cancelled(
-                    tenant_id, job.id, parent_job_id=parent_job_id, lease_lost=lease_lost
+                    tenant_id,
+                    job.id,
+                    parent_job_id=parent_job_id,
+                    lease_lost=lease_lost,
                 )
 
                 # Use last successful attempt's collector (if available) for metadata
@@ -504,7 +544,10 @@ class DiscoveryExecutionService:
                 self.session.commit()
 
                 self._raise_if_cancelled(
-                    tenant_id, job.id, parent_job_id=parent_job_id, lease_lost=lease_lost
+                    tenant_id,
+                    job.id,
+                    parent_job_id=parent_job_id,
+                    lease_lost=lease_lost,
                 )
 
                 collector_parser = getattr(collector_for_evidence, "parser", None)
@@ -519,7 +562,10 @@ class DiscoveryExecutionService:
                     raw_payload=mt_result.discovery_payload,
                 )
                 self._raise_if_cancelled(
-                    tenant_id, job.id, parent_job_id=parent_job_id, lease_lost=lease_lost
+                    tenant_id,
+                    job.id,
+                    parent_job_id=parent_job_id,
+                    lease_lost=lease_lost,
                 )
 
                 self.snapshots.add_live_snapshot(
@@ -597,15 +643,17 @@ class DiscoveryExecutionService:
                 )
             else:
                 failure_code = DiscoveryFailureCode.TRANSPORT_UNAVAILABLE
-                failure_message = (
-                    "Host is reachable but no configured management transport succeeded."
-                )
+                failure_message = "Host is reachable but no configured management transport succeeded."
         elif mt_result.result_state == DiscoveryResultState.AUTHENTICATION_FAILED:
             failure_code = DiscoveryFailureCode.AUTHENTICATION_FAILED
-            failure_message = "Authentication failed for all applicable management transports."
+            failure_message = (
+                "Authentication failed for all applicable management transports."
+            )
         elif mt_result.result_state == DiscoveryResultState.PARTIAL_DISCOVERY:
             failure_code = DiscoveryFailureCode.DISCOVERY_FAILED
-            failure_message = "Partial discovery data collected but full discovery did not complete."
+            failure_message = (
+                "Partial discovery data collected but full discovery did not complete."
+            )
 
         if device_result is not None:
             device_result.failure_code = failure_code.value
@@ -787,7 +835,8 @@ class DiscoveryExecutionService:
                 device_result = self.session.scalar(
                     select(DiscoveryDeviceResultRecord).where(
                         DiscoveryDeviceResultRecord.child_job_id == job.id,
-                        DiscoveryDeviceResultRecord.tenant_id == resolved_target.tenant_id,
+                        DiscoveryDeviceResultRecord.tenant_id
+                        == resolved_target.tenant_id,
                     )
                 )
                 if device_result is None:
@@ -846,6 +895,7 @@ class DiscoveryExecutionService:
                     attempt,
                     result="failed",
                     failure_code=failure_code.value,
+                    failure_message=self._safe_failure_message(exc),
                 )
             resolved_target = self._resolve_target(job, tenant_id)
             try:
@@ -1245,7 +1295,22 @@ class DiscoveryExecutionService:
 
     @staticmethod
     def _safe_failure_message(exc: Exception) -> str:
+        import re
+
         message = str(exc).strip()
+        if not message:
+            return "Discovery execution failed."
+
+        message = re.sub(
+            r"(?i)(password|secret|token|api[_-]?key|auth[_-]?pass|enable[_-]?pass|community)\s*[:=]\s*([^\s,;]+)",
+            r"\1=[REDACTED]",
+            message,
+        )
+        message = re.sub(
+            r"(?i)(NOP_SECRET_[A-Z0-9_]+|vault:[^\s,;]+|credential:[^\s,;]+)",
+            "[REDACTED]",
+            message,
+        )
         return message[:1000] or "Discovery execution failed."
 
 

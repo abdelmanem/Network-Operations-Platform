@@ -5,6 +5,7 @@ import pytest
 from backend.app.collectors.base import BaseCollector
 from backend.app.collectors.context import CollectorContext
 from backend.app.collectors.registry import CollectorRegistry
+from backend.app.collectors.cisco.inventory import CiscoInventoryParser
 from backend.app.discovery.capabilities import CollectorCapability
 from backend.app.discovery.contracts import DiscoveryFailureCode, DiscoveryJobStatus
 from backend.app.discovery.execution import (
@@ -45,6 +46,73 @@ class SshSuccessCollector(BaseCollector):
 
     async def normalize(self, context, raw_payload, *, discovered_targets):
         raise AssertionError("Must not normalize in unit tests")
+
+    async def close(self) -> None:
+        return None
+
+
+class CiscoRawPayloadCollector(BaseCollector):
+    parser = CiscoInventoryParser()
+
+    def __init__(
+        self,
+        *,
+        payload: dict[str, object] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        super().__init__(
+            name="cisco-raw",
+            capabilities=frozenset({CollectorCapability.SSH}),
+        )
+        self.payload = payload
+        self.error = error
+
+    async def health_check(self, context: CollectorContext) -> None:
+        await asyncio.sleep(0)
+
+    async def discover(self, context: CollectorContext):
+        return ()
+
+    async def collect(self, context: CollectorContext, *, discovered_targets):
+        if self.error is not None:
+            raise self.error
+        return self.payload or {
+            "target": {
+                "identifier": context.target.identifier,
+                "address": context.target.address,
+                "metadata": {},
+            },
+            "platform_family": "catalyst-2960",
+            "parser_family": "ios",
+            "transport": "ssh",
+            "commands": {
+                "show version": (
+                    "Cisco IOS Software, C2960 Software, Version 15.2(7)E7\n"
+                    "New-Ground-SW1 uptime is 1 day\n"
+                    "Model number                    : WS-C2960-48TT-L\n"
+                    "System serial number            : FOC1234X1AB\n"
+                ),
+                "show inventory": (
+                    'NAME: "1", DESCR: "Switch"\n'
+                    "PID: WS-C2960-48TT-L , VID: V05 , SN: FOC1234X1AB"
+                ),
+            },
+        }
+
+    async def normalize(self, context, raw_payload, *, discovered_targets):
+        from backend.app.parsers.context import ParserContext, ParserInputFormat
+
+        result = self.parser.parse(
+            ParserContext(
+                source=context.target.identifier,
+                input_format=ParserInputFormat.JSON,
+                parser_name=self.parser.name,
+            ),
+            raw_payload,
+        )
+        from backend.app.normalization.engine import NormalizationEngine
+
+        return NormalizationEngine().normalize(result).snapshot
 
     async def close(self) -> None:
         return None
@@ -149,7 +217,9 @@ class TelnetFailCollector(BaseCollector):
         return ()
 
     async def collect(self, context: CollectorContext, *, discovered_targets):
-        raise ConnectionRefusedError("Connection refused - Telnet service not available")
+        raise ConnectionRefusedError(
+            "Connection refused - Telnet service not available"
+        )
 
     async def normalize(self, context, raw_payload, *, discovered_targets):
         raise AssertionError("Must not normalize in unit tests")
@@ -228,7 +298,9 @@ class SnmpCollector(BaseCollector):
         return ()
 
     async def collect(self, context: CollectorContext, *, discovered_targets):
-        raise AssertionError("SNMP should not be called in unsupported-credential scenario")
+        raise AssertionError(
+            "SNMP should not be called in unsupported-credential scenario"
+        )
 
     async def normalize(self, context, raw_payload, *, discovered_targets):
         raise AssertionError("Must not normalize in unit tests")
@@ -360,7 +432,9 @@ def _register_all_transports(
         )
     )
     registry.register(
-        https_cls(name="https-cisco", capabilities=frozenset({CollectorCapability.HTTPS}))
+        https_cls(
+            name="https-cisco", capabilities=frozenset({CollectorCapability.HTTPS})
+        )
     )
 
 
@@ -413,13 +487,129 @@ async def test_A_ssh_success_no_fallback_single_transport() -> None:
     result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
     assert result.result_state == DiscoveryResultState.DISCOVERED.value
     assert result.selected_transport == "ssh"
-    attempts = session.execute(
-        select(DiscoveryTransportAttemptRecord)
-    ).scalars().all()
+    attempts = session.execute(select(DiscoveryTransportAttemptRecord)).scalars().all()
     assert len(attempts) == 1
     assert attempts[0].transport == "ssh"
     assert attempts[0].attempt_order == 1
     assert attempts[0].result == "success"
+
+
+@pytest.mark.anyio
+async def test_cisco_nested_raw_payload_is_parsed_before_identity_validation() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh"])
+    job = _job_with_profile(session, profile=profile, collector_name="cisco-raw")
+    registry = CollectorRegistry()
+    registry.register(CiscoRawPayloadCollector())
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.SUCCEEDED.value
+    result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
+    assert result.result_state == DiscoveryResultState.DISCOVERED.value
+    assert result.selected_transport == "ssh"
+    assert result.failure_code is None
+    attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
+    assert attempt.result == "success"
+
+
+@pytest.mark.anyio
+async def test_cisco_empty_cli_output_remains_no_identity_failure() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh"])
+    job = _job_with_profile(session, profile=profile, collector_name="cisco-raw")
+    registry = CollectorRegistry()
+    registry.register(
+        CiscoRawPayloadCollector(
+            payload={
+                "target": {
+                    "identifier": "core-01",
+                    "address": "10.0.0.1",
+                    "metadata": {},
+                },
+                "platform_family": "catalyst-2960",
+                "parser_family": "ios",
+                "transport": "ssh",
+                "commands": {"show version": "", "show inventory": ""},
+            }
+        )
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    assert outcome.job.failure_code == DiscoveryFailureCode.DISCOVERY_FAILED.value
+    assert outcome.job.failure_message == (
+        "Collector did not return device identification data"
+    )
+    attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
+    assert attempt.failure_code == DiscoveryFailureCode.DISCOVERY_FAILED.value
+
+
+@pytest.mark.anyio
+async def test_cisco_malformed_cli_output_remains_no_identity_failure() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh"])
+    job = _job_with_profile(session, profile=profile, collector_name="cisco-raw")
+    registry = CollectorRegistry()
+    registry.register(
+        CiscoRawPayloadCollector(
+            payload={
+                "target": {
+                    "identifier": "core-01",
+                    "address": "10.0.0.1",
+                    "metadata": {},
+                },
+                "platform_family": "catalyst-2960",
+                "parser_family": "ios",
+                "transport": "ssh",
+                "commands": {
+                    "show version": "not Cisco output",
+                    "show inventory": "invalid inventory output",
+                },
+            }
+        )
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    assert outcome.job.failure_code == DiscoveryFailureCode.DISCOVERY_FAILED.value
+    attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
+    assert attempt.failure_message == (
+        "Collector did not return device identification data"
+    )
+
+
+@pytest.mark.anyio
+async def test_cisco_command_exception_keeps_exception_failure_path() -> None:
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh"])
+    job = _job_with_profile(session, profile=profile, collector_name="cisco-raw")
+    registry = CollectorRegistry()
+    registry.register(
+        CiscoRawPayloadCollector(error=TimeoutError("SSH command timed out"))
+    )
+
+    outcome = await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    assert outcome.job.state == DiscoveryJobStatus.FAILED.value
+    assert outcome.job.failure_code == DiscoveryFailureCode.CONNECTION_FAILED.value
+    assert (
+        outcome.job.failure_message
+        == "Host was unreachable for all configured transports."
+    )
+    attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
+    assert attempt.failure_code == DiscoveryFailureCode.CONNECTION_TIMEOUT.value
+    assert attempt.failure_message == "SSH command timed out"
 
 
 @pytest.mark.anyio
@@ -462,11 +652,11 @@ async def test_B_ssh_fails_then_telnet_succeeds_fallback() -> None:
 
 
 @pytest.mark.anyio
-async def test_C_ssh_fails_telnet_fails_then_https_succeeds_three_step_fallback() -> None:
+async def test_C_ssh_fails_telnet_fails_then_https_succeeds_three_step_fallback() -> (
+    None
+):
     session = _session()
-    profile = _credential_profile(
-        session, transport_types=["ssh", "telnet", "https"]
-    )
+    profile = _credential_profile(session, transport_types=["ssh", "telnet", "https"])
     job = _job_with_profile(session, profile=profile)
     registry = CollectorRegistry()
     registry.register(
@@ -510,9 +700,7 @@ async def test_C_ssh_fails_telnet_fails_then_https_succeeds_three_step_fallback(
 @pytest.mark.anyio
 async def test_D_all_transports_fail_distinguish_reachable_vs_auth_failure() -> None:
     session = _session()
-    profile = _credential_profile(
-        session, transport_types=["ssh", "telnet", "https"]
-    )
+    profile = _credential_profile(session, transport_types=["ssh", "telnet", "https"])
     job = _job_with_profile(session, profile=profile)
     registry = CollectorRegistry()
     registry.register(
@@ -547,6 +735,41 @@ async def test_D_all_transports_fail_distinguish_reachable_vs_auth_failure() -> 
     )
     assert len(attempts) == 3
     assert attempts[0].failure_code == DiscoveryFailureCode.AUTHENTICATION_FAILED.value
+    assert "invalid credentials" in attempts[0].failure_message
+
+
+@pytest.mark.anyio
+async def test_transport_attempt_records_preserve_failure_message_without_secrets() -> (
+    None
+):
+    session = _session()
+    profile = _credential_profile(session, transport_types=["ssh", "telnet"])
+    job = _job_with_profile(session, profile=profile)
+    registry = CollectorRegistry()
+    registry.register(
+        SshAuthFailCollector(
+            name="ssh-cisco", capabilities=frozenset({CollectorCapability.SSH})
+        )
+    )
+    registry.register(
+        TelnetSuccessCollector(
+            name="telnet-cisco", capabilities=frozenset({CollectorCapability.TELNET})
+        )
+    )
+
+    await DiscoveryExecutionService(session, registry).execute(
+        tenant_id="tenant-a", job_id=job.id
+    )
+
+    attempts = sorted(
+        session.execute(select(DiscoveryTransportAttemptRecord)).scalars().all(),
+        key=lambda attempt: attempt.attempt_order,
+    )
+    assert len(attempts) == 2
+    assert attempts[0].failure_code == DiscoveryFailureCode.AUTHENTICATION_FAILED.value
+    assert attempts[0].failure_message is not None
+    assert "invalid credentials" in attempts[0].failure_message
+    assert "secret" not in attempts[0].failure_message.lower()
 
 
 @pytest.mark.anyio
@@ -614,9 +837,7 @@ async def test_D2_ssh_telnet_https_fail_then_http_succeeds() -> None:
 @pytest.mark.anyio
 async def test_E_host_unreachable_all_timeout_no_management() -> None:
     session = _session()
-    profile = _credential_profile(
-        session, transport_types=["ssh", "telnet", "https"]
-    )
+    profile = _credential_profile(session, transport_types=["ssh", "telnet", "https"])
     job = _job_with_profile(session, profile=profile)
     registry = CollectorRegistry()
     registry.register(
@@ -753,7 +974,9 @@ async def test_G_snmp_credential_ssh_transport_unsupported_credential_code() -> 
         )
     )
     registry.register(
-        SnmpCollector(name="snmp-cisco", capabilities=frozenset({CollectorCapability.SNMP}))
+        SnmpCollector(
+            name="snmp-cisco", capabilities=frozenset({CollectorCapability.SNMP})
+        )
     )
 
     outcome = await DiscoveryExecutionService(session, registry).execute(
@@ -763,19 +986,25 @@ async def test_G_snmp_credential_ssh_transport_unsupported_credential_code() -> 
     assert outcome.executed is True
     result = session.execute(select(DiscoveryDeviceResultRecord)).scalar_one()
     attempts = session.execute(select(DiscoveryTransportAttemptRecord)).scalars().all()
-    unsupported = [a for a in attempts if a.failure_code == DiscoveryFailureCode.UNSUPPORTED_CREDENTIAL.value]
+    unsupported = [
+        a
+        for a in attempts
+        if a.failure_code == DiscoveryFailureCode.UNSUPPORTED_CREDENTIAL.value
+    ]
     assert len(unsupported) >= 1
     transport_names_unsupported = {a.transport for a in unsupported}
-    assert "ssh" in transport_names_unsupported or "telnet" in transport_names_unsupported or "https" in transport_names_unsupported
+    assert (
+        "ssh" in transport_names_unsupported
+        or "telnet" in transport_names_unsupported
+        or "https" in transport_names_unsupported
+    )
 
 
 @pytest.mark.anyio
 async def test_H_allow_insecure_telnet_false_skips_telnet_in_chain() -> None:
     session = _session()
     profile = _credential_profile(session, transport_types=["ssh", "telnet", "https"])
-    job = _job_with_profile(
-        session, profile=profile, allow_insecure_telnet=False
-    )
+    job = _job_with_profile(session, profile=profile, allow_insecure_telnet=False)
     registry = CollectorRegistry()
     registry.register(
         SshFailReachableCollector(
@@ -1032,9 +1261,7 @@ async def test_K_attempt_order_sequence_is_1_to_N_strictly_increasing() -> None:
 @pytest.mark.anyio
 async def test_L_no_secrets_password_or_secret_in_any_record_or_payload() -> None:
     session = _session()
-    profile = _credential_profile(
-        session, transport_types=["ssh", "telnet"]
-    )
+    profile = _credential_profile(session, transport_types=["ssh", "telnet"])
     job = _job_with_profile(session, profile=profile)
     registry = CollectorRegistry()
 

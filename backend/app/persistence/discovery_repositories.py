@@ -1194,10 +1194,12 @@ class DiscoveryTransportAttemptRepository:
         *,
         result: str,
         failure_code: str | None = None,
+        failure_message: str | None = None,
     ) -> DiscoveryTransportAttemptRecord:
         completed_at = _utc_now()
         record.result = result
         record.failure_code = failure_code
+        record.failure_message = failure_message
         record.completed_at = completed_at
         started_at = record.started_at
         if started_at is not None and started_at.tzinfo is None:

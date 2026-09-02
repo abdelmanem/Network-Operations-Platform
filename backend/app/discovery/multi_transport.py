@@ -13,11 +13,10 @@ The orchestrator ensures:
 
 from __future__ import annotations
 
-import asyncio
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 from backend.app.discovery.contracts import DiscoveryFailureCode
 from backend.app.discovery.probing import (
@@ -52,6 +51,9 @@ class TransportAttemptConfig:
     collector: BaseCollector
     context: CollectorContext
     is_insecure: bool = False
+    validate_payload: (
+        Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]] | None
+    ) = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,15 +104,15 @@ class MultiTransportDiscoveryResult:
 class MultiTransportDiscoveryOrchestrator:
     """Orchestrates multi-transport discovery with automatic fallback.
 
-    This orchestrator manages the discovery process across multiple management
-transports, implementing fallback logic when primary transports fail while
-maintaining accurate result classification and audit trails.
+        This orchestrator manages the discovery process across multiple management
+    transports, implementing fallback logic when primary transports fail while
+    maintaining accurate result classification and audit trails.
 
-    Key responsibilities:
-    - Execute transport attempts in configured priority order
-    - Record every attempt for troubleshooting and compliance
-    - Determine accurate result states (unreachable, auth failed, discovered, etc.)
-    - Support service probing to optimize transport ordering
+        Key responsibilities:
+        - Execute transport attempts in configured priority order
+        - Record every attempt for troubleshooting and compliance
+        - Determine accurate result states (unreachable, auth failed, discovered, etc.)
+        - Support service probing to optimize transport ordering
     """
 
     def __init__(
@@ -137,18 +139,18 @@ maintaining accurate result classification and audit trails.
     ) -> MultiTransportDiscoveryResult:
         """Execute discovery with automatic transport fallback.
 
-        Attempts each configured transport in order until one succeeds,
-recording all attempts and determining the appropriate result state.
+                Attempts each configured transport in order until one succeeds,
+        recording all attempts and determining the appropriate result state.
 
-        Args:
-            address: Target IP address or hostname
-            transport_configs: Ordered list of transport configurations to attempt
-            attempts_repository: Optional repository to persist attempt records
-            device_result: Optional device result record to associate with attempts
-            probe_services: Whether to probe services first (defaults to enable_service_probing)
+                Args:
+                    address: Target IP address or hostname
+                    transport_configs: Ordered list of transport configurations to attempt
+                    attempts_repository: Optional repository to persist attempt records
+                    device_result: Optional device result record to associate with attempts
+                    probe_services: Whether to probe services first (defaults to enable_service_probing)
 
-        Returns:
-            MultiTransportDiscoveryResult with complete discovery outcome
+                Returns:
+                    MultiTransportDiscoveryResult with complete discovery outcome
         """
         started_at = datetime.now(UTC)
         should_probe = (
@@ -253,6 +255,9 @@ recording all attempts and determining the appropriate result state.
 
                 # Determine failure code for attempt record
                 failure_code_str = None
+                failure_message = self._safe_failure_message(
+                    attempt_result.failure_message
+                )
                 if attempt_result.failure_code:
                     failure_code_str = attempt_result.failure_code.value
 
@@ -263,6 +268,7 @@ recording all attempts and determining the appropriate result state.
                             attempt_record,
                             result="failed",
                             failure_code=failure_code_str,
+                            failure_message=failure_message,
                         )
                     except Exception:
                         pass
@@ -345,15 +351,44 @@ recording all attempts and determining the appropriate result state.
 
             # Determine if we got useful data
             if payload and isinstance(payload, dict):
+                normalized_device_info = None
+                if config.validate_payload is not None:
+                    normalized_device_info = await config.validate_payload(
+                        dict(payload)
+                    )
+                    if normalized_device_info is not None:
+                        completed_at = datetime.now(UTC)
+                        duration_ms = int(
+                            (completed_at - attempt_started).total_seconds() * 1000
+                        )
+                        return TransportAttemptResult(
+                            transport_name=config.transport_name,
+                            attempt_order=attempt_order,
+                            success=True,
+                            started_at=attempt_started,
+                            completed_at=completed_at,
+                            duration_ms=duration_ms,
+                            payload=dict(payload),
+                            device_info=normalized_device_info,
+                        )
+
                 # Extract device info if present
                 device_info: dict[str, Any] | None = None
-                if "device_info" in payload and isinstance(payload["device_info"], dict):
+                if "device_info" in payload and isinstance(
+                    payload["device_info"], dict
+                ):
                     device_info = dict(payload["device_info"])
                 elif "facts" in payload and isinstance(payload["facts"], dict):
                     device_info = dict(payload["facts"])
                 else:
                     extracted: dict[str, Any] = {}
-                    for key in ["hostname", "platform", "vendor", "model", "serial_number"]:
+                    for key in [
+                        "hostname",
+                        "platform",
+                        "vendor",
+                        "model",
+                        "serial_number",
+                    ]:
                         if key in payload and payload[key] is not None:
                             extracted[key] = payload[key]
                     if extracted:
@@ -362,7 +397,13 @@ recording all attempts and determining the appropriate result state.
                 # Check for device identification in payload
                 has_device_info = any(
                     key in payload
-                    for key in ["device_info", "facts", "inventory", "hostname", "platform"]
+                    for key in [
+                        "device_info",
+                        "facts",
+                        "inventory",
+                        "hostname",
+                        "platform",
+                    ]
                 )
 
                 if has_device_info or payload.get("success"):
@@ -403,7 +444,7 @@ recording all attempts and determining the appropriate result state.
 
             # Classify the exception
             failure_code = self._classify_exception(exc)
-            failure_message = str(exc)[:500]  # Limit message length
+            failure_message = self._safe_failure_message(exc)
 
             return TransportAttemptResult(
                 transport_name=config.transport_name,
@@ -416,6 +457,27 @@ recording all attempts and determining the appropriate result state.
                 duration_ms=duration_ms,
             )
 
+    @staticmethod
+    def _safe_failure_message(value: str | Exception | None) -> str | None:
+        """Return a safe message for persistence without leaking secret values."""
+        import re
+
+        message = str(value).strip() if value is not None else ""
+        if not message:
+            return None
+
+        message = re.sub(
+            r"(?i)(password|secret|token|api[_-]?key|auth[_-]?pass|enable[_-]?pass|community)\s*[:=]\s*([^\s,;]+)",
+            r"\1=[REDACTED]",
+            message,
+        )
+        message = re.sub(
+            r"(?i)(NOP_SECRET_[A-Z0-9_]+|vault:[^\s,;]+|credential:[^\s,;]+)",
+            "[REDACTED]",
+            message,
+        )
+        return message[:500] or None
+
     def _classify_exception(self, exc: Exception) -> DiscoveryFailureCode:
         """Classify an exception into a DiscoveryFailureCode."""
         message = str(exc).lower()
@@ -424,7 +486,13 @@ recording all attempts and determining the appropriate result state.
         # Authentication-related errors
         if any(
             term in message
-            for term in ["authentication", "unauthorized", "credential", "login", "auth"]
+            for term in [
+                "authentication",
+                "unauthorized",
+                "credential",
+                "login",
+                "auth",
+            ]
         ):
             return DiscoveryFailureCode.AUTHENTICATION_FAILED
 
