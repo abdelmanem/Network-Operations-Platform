@@ -21,6 +21,7 @@ from backend.app.persistence.models import (
     DiscoveryEvidenceRecord,
     DiscoveryJobRecord,
     DiscoveryRunRecord,
+    DiscoveryRunStatus,
     DiscoveryTargetRecord,
     DiscoveryTransportAttemptRecord,
 )
@@ -511,6 +512,15 @@ async def test_cisco_nested_raw_payload_is_parsed_before_identity_validation() -
     assert result.result_state == DiscoveryResultState.DISCOVERED.value
     assert result.selected_transport == "ssh"
     assert result.failure_code is None
+    run = session.get(DiscoveryRunRecord, job.run_id)
+    assert run is not None
+    assert run.status == DiscoveryRunStatus.SUCCEEDED.value
+    assert run.total_scanned == 1
+    assert run.total_discovered == 1
+    assert run.total_partial_discovery == 0
+    assert run.total_authentication_failed == 0
+    assert run.total_reachable_no_management == 0
+    assert run.total_unreachable == 0
     attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
     assert attempt.result == "success"
 
@@ -546,6 +556,11 @@ async def test_cisco_empty_cli_output_remains_no_identity_failure() -> None:
     assert outcome.job.failure_message == (
         "Collector did not return device identification data"
     )
+    run = session.get(DiscoveryRunRecord, job.run_id)
+    assert run is not None
+    assert run.status == DiscoveryRunStatus.FAILED.value
+    assert run.total_scanned == 1
+    assert run.total_reachable_no_management == 1
     attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
     assert attempt.failure_code == DiscoveryFailureCode.DISCOVERY_FAILED.value
 
@@ -585,6 +600,11 @@ async def test_cisco_malformed_cli_output_remains_no_identity_failure() -> None:
     assert attempt.failure_message == (
         "Collector did not return device identification data"
     )
+    run = session.get(DiscoveryRunRecord, job.run_id)
+    assert run is not None
+    assert run.status == DiscoveryRunStatus.FAILED.value
+    assert run.total_scanned == 1
+    assert run.total_reachable_no_management == 1
 
 
 @pytest.mark.anyio
@@ -610,6 +630,72 @@ async def test_cisco_command_exception_keeps_exception_failure_path() -> None:
     attempt = session.execute(select(DiscoveryTransportAttemptRecord)).scalar_one()
     assert attempt.failure_code == DiscoveryFailureCode.CONNECTION_TIMEOUT.value
     assert attempt.failure_message == "SSH command timed out"
+    run = session.get(DiscoveryRunRecord, job.run_id)
+    assert run is not None
+    assert run.status == DiscoveryRunStatus.FAILED.value
+    assert run.total_scanned == 1
+    assert run.total_unreachable == 1
+
+
+@pytest.mark.parametrize(
+    ("result_state", "count_field", "run_status"),
+    [
+        (
+            DiscoveryResultState.DISCOVERED,
+            "total_discovered",
+            DiscoveryRunStatus.SUCCEEDED,
+        ),
+        (
+            DiscoveryResultState.PARTIAL_DISCOVERY,
+            "total_partial_discovery",
+            DiscoveryRunStatus.FAILED,
+        ),
+        (
+            DiscoveryResultState.AUTHENTICATION_FAILED,
+            "total_authentication_failed",
+            DiscoveryRunStatus.FAILED,
+        ),
+        (
+            DiscoveryResultState.UNREACHABLE,
+            "total_unreachable",
+            DiscoveryRunStatus.FAILED,
+        ),
+        (
+            DiscoveryResultState.REACHABLE_NO_MANAGEMENT,
+            "total_reachable_no_management",
+            DiscoveryRunStatus.FAILED,
+        ),
+    ],
+)
+def test_single_device_run_summary_maps_result_state(
+    result_state: DiscoveryResultState,
+    count_field: str,
+    run_status: DiscoveryRunStatus,
+) -> None:
+    session = _session()
+    job = _job_legacy(session)
+    service = DiscoveryExecutionService(session, CollectorRegistry())
+
+    service._finalize_single_device_run(
+        run_id=job.run_id,
+        result_state=result_state,
+    )
+    session.commit()
+
+    run = session.get(DiscoveryRunRecord, job.run_id)
+    assert run is not None
+    assert run.status == run_status.value
+    assert run.total_scanned == 1
+    assert getattr(run, count_field) == 1
+    for field_name in (
+        "total_discovered",
+        "total_partial_discovery",
+        "total_authentication_failed",
+        "total_reachable_no_management",
+        "total_unreachable",
+    ):
+        if field_name != count_field:
+            assert getattr(run, field_name) == 0
 
 
 @pytest.mark.anyio

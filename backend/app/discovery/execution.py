@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from backend.app.collectors.base import BaseCollector
@@ -45,6 +45,8 @@ from backend.app.persistence.discovery_repositories import (
 from backend.app.persistence.models import (
     DiscoveryDeviceResultRecord,
     DiscoveryJobRecord,
+    DiscoveryRunRecord,
+    DiscoveryRunStatus,
     DiscoveryTargetRecord,
     DiscoveryTransportAttemptRecord,
 )
@@ -586,6 +588,10 @@ class DiscoveryExecutionService:
                     target_state=DiscoveryJobStatus.SUCCEEDED,
                     require_no_cancellation=True,
                 )
+                self._finalize_single_device_run(
+                    run_id=job.run_id,
+                    result_state=DiscoveryResultState.DISCOVERED,
+                )
                 self.session.commit()
                 if device_result is not None:
                     device_result.state = DiscoveryJobStatus.SUCCEEDED.value
@@ -666,6 +672,10 @@ class DiscoveryExecutionService:
             failure_code=failure_code.value,
             failure_message=failure_message,
         )
+        self._finalize_single_device_run(
+            run_id=job.run_id,
+            result_state=mt_result.result_state,
+        )
         self._ensure_device_result_for_failure(
             job=job,
             target=target,
@@ -675,6 +685,44 @@ class DiscoveryExecutionService:
         )
         self.session.commit()
         return DiscoveryExecutionOutcome(job=failed, executed=True)
+
+    def _finalize_single_device_run(
+        self,
+        *,
+        run_id: UUID,
+        result_state: DiscoveryResultState,
+    ) -> None:
+        """Finalize the run summary for one already-completed device job."""
+        if self.session.get(DiscoveryRunRecord, run_id) is None:
+            return
+
+        counts = {
+            "total_scanned": 1,
+            "total_discovered": int(result_state == DiscoveryResultState.DISCOVERED),
+            "total_unreachable": int(result_state == DiscoveryResultState.UNREACHABLE),
+            "total_reachable_no_management": int(
+                result_state == DiscoveryResultState.REACHABLE_NO_MANAGEMENT
+            ),
+            "total_authentication_failed": int(
+                result_state == DiscoveryResultState.AUTHENTICATION_FAILED
+            ),
+            "total_partial_discovery": int(
+                result_state == DiscoveryResultState.PARTIAL_DISCOVERY
+            ),
+        }
+        self.session.execute(
+            update(DiscoveryRunRecord)
+            .where(DiscoveryRunRecord.id == run_id)
+            .values(
+                **counts,
+                status=(
+                    DiscoveryRunStatus.SUCCEEDED.value
+                    if result_state == DiscoveryResultState.DISCOVERED
+                    else DiscoveryRunStatus.FAILED.value
+                ),
+                finished_at=datetime.now(UTC),
+            )
+        )
 
     async def execute(
         self,
