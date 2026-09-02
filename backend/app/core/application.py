@@ -30,7 +30,7 @@ from backend.app.collectors.runtime.metrics import CollectorRuntimeMetrics
 from backend.app.collectors.runtime.scheduler import CollectorScheduler
 from backend.app.comparison.engine import ComparisonEngine
 from backend.app.config.logging import configure_logging
-from backend.app.config.settings import Settings, get_settings
+from backend.app.config.settings import Settings, get_settings, load_runtime_environment
 from backend.app.core.constants import APP_NAME, APP_PACKAGE, APP_VERSION
 from backend.app.core.lifecycle import ApplicationLifecycleManager, lifecycle_context
 from backend.app.core.metadata import ApplicationMetadata
@@ -224,6 +224,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
 
     app_settings = settings or get_settings()
+    if app_settings.app_env.lower() in {"development", "test"}:
+        load_runtime_environment()
     configure_logging(app_settings.log_level)
     secret_provider = build_secret_provider(app_settings)
 

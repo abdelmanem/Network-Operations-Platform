@@ -1,6 +1,8 @@
+import os
 from types import SimpleNamespace
 
 import pytest
+from backend.app.config.settings import load_runtime_environment
 from backend.app.transports.credentials import EnvironmentSecretProvider
 from backend.app.transports.secret_errors import (
     InvalidSecretReferenceError,
@@ -35,6 +37,20 @@ def test_environment_provider_missing_secret_raises_typed_error() -> None:
     assert excinfo.value.code == "secret_not_found"
     assert _SECRET_VALUE not in str(excinfo.value)
     assert "missing-reference" not in str(excinfo.value)
+
+
+def test_runtime_environment_bootstrap_loads_dotenv_without_overriding_process_env(
+    tmp_path, monkeypatch
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("NOP_SECRET_RADISSON=dotenv-secret\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NOP_SECRET_RADISSON", "process-secret")
+
+    load_runtime_environment(env_file)
+
+    assert os.environ["NOP_SECRET_RADISSON"] == "process-secret"
+    assert EnvironmentSecretProvider().resolve_secret("Radisson") == "process-secret"
 
 
 def test_environment_provider_invalid_reference_raises_typed_error() -> None:

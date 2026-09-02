@@ -1,8 +1,48 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def load_runtime_environment(
+    env_file: str | Path | None = None,
+    *,
+    override: bool = False,
+) -> dict[str, str]:
+    """Load repo-root .env values into the live process environment.
+
+    The settings layer can read .env for configuration, but runtime secret
+    providers resolve secrets from os.environ. Use this only as a development
+    bootstrap so explicit process variables continue to win.
+    """
+
+    env_path = Path(env_file) if env_file is not None else Path(__file__).resolve().parents[3] / ".env"
+    if not env_path.exists():
+        return {}
+
+    loaded: dict[str, str] = {}
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        if value and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if not override and key in os.environ:
+            continue
+        os.environ[key] = value
+        loaded[key] = value
+    return loaded
 
 
 class Settings(BaseSettings):
