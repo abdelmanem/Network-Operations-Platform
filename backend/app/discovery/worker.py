@@ -273,7 +273,18 @@ class DiscoveryJobWorker:
                 failure_message=failure_message[:1000],
                 expected_execution_owner=execution_owner,
             )
-            session.commit()
+            target = DiscoveryTargetRepository(session).get(
+                tenant_id=tenant_id, target_id=current.target_id
+            )
+            if target is not None and target.scope_type in {"ip_range", "cidr_network"}:
+                DiscoveryFanoutService.reconcile_parent_job(
+                    session,
+                    tenant_id=tenant_id,
+                    parent_job_id=job_id,
+                    interrupted=True,
+                )
+            else:
+                session.commit()
         except Exception:
             session.rollback()
             self.logger.exception(

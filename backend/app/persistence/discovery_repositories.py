@@ -204,7 +204,9 @@ class DiscoveryTargetRepository:
             if device_result_ids:
                 self.session.execute(
                     delete(DiscoveryTransportAttemptRecord).where(
-                        DiscoveryTransportAttemptRecord.device_result_id.in_(device_result_ids)
+                        DiscoveryTransportAttemptRecord.device_result_id.in_(
+                            device_result_ids
+                        )
                     )
                 )
                 self.session.execute(
@@ -421,7 +423,9 @@ class DiscoveryJobRepository:
             .order_by(DiscoveryJobRecord.requested_at.asc())
             .limit(limit)
         )
-        return tuple((tenant_id, job_id) for tenant_id, job_id in self.session.execute(statement))
+        return tuple(
+            (tenant_id, job_id) for tenant_id, job_id in self.session.execute(statement)
+        )
 
     def list(self, *, tenant_id: str) -> tuple[DiscoveryJobRecord, ...]:
         statement = (
@@ -513,12 +517,9 @@ class DiscoveryJobRepository:
             direction = normalized_order or "desc"
             if is_sqlite:
                 now_expr = func.datetime("now")
-                duration_expr = (
-                    func.julianday(
-                        func.coalesce(DiscoveryJobRecord.completed_at, now_expr)
-                    )
-                    - func.julianday(DiscoveryJobRecord.started_at)
-                )
+                duration_expr = func.julianday(
+                    func.coalesce(DiscoveryJobRecord.completed_at, now_expr)
+                ) - func.julianday(DiscoveryJobRecord.started_at)
             else:
                 duration_expr = (
                     func.coalesce(DiscoveryJobRecord.completed_at, func.now())
@@ -782,6 +783,19 @@ class DiscoveryJobRepository:
                 "Discovery job changed state before cancellation could be applied."
             )
         self.session.flush()
+        target = self.session.get(DiscoveryTargetRecord, job.target_id)
+        if (
+            target is not None
+            and target.scope_type in {"ip_range", "cidr_network"}
+            and job.state == DiscoveryJobStatus.QUEUED.value
+        ):
+            from backend.app.discovery.fanout import DiscoveryFanoutService
+
+            DiscoveryFanoutService.reconcile_parent_job(
+                self.session,
+                tenant_id=tenant_id,
+                parent_job_id=job_id,
+            )
         return self.get(tenant_id=tenant_id, job_id=job_id), True  # type: ignore[return-value]
 
     def cancellation_requested(self, *, tenant_id: str, job_id: UUID) -> bool:
@@ -906,7 +920,10 @@ class DiscoveryJobRepository:
         if result.scalar_one_or_none() is None:
             self.session.rollback()
             current = self.get(tenant_id=tenant_id, job_id=job_id)
-            if current is not None and current.state == DiscoveryJobStatus.CANCELLED.value:
+            if (
+                current is not None
+                and current.state == DiscoveryJobStatus.CANCELLED.value
+            ):
                 return current
             current_lease_expires_at = (
                 _as_utc(current.lease_expires_at) if current is not None else None
@@ -955,6 +972,15 @@ class DiscoveryJobRepository:
             )
 
         self.session.flush()
+        target = self.session.get(DiscoveryTargetRecord, job.target_id)
+        if target is not None and target.scope_type in {"ip_range", "cidr_network"}:
+            from backend.app.discovery.fanout import DiscoveryFanoutService
+
+            DiscoveryFanoutService.reconcile_parent_job(
+                self.session,
+                tenant_id=tenant_id,
+                parent_job_id=job_id,
+            )
         return self.get(tenant_id=tenant_id, job_id=job_id)  # type: ignore[return-value]
 
     def recover_expired_owned_jobs(
@@ -1000,7 +1026,8 @@ class DiscoveryJobRepository:
             or job.execution_owner is None
             or job.lease_expires_at is None
             or job.last_heartbeat_at is None
-            or (_as_utc(job.lease_expires_at) or _utc_now()) >= (_as_utc(stale_before) or _utc_now())
+            or (_as_utc(job.lease_expires_at) or _utc_now())
+            >= (_as_utc(stale_before) or _utc_now())
         ):
             return None
         return self._reconcile_owned_tree(
@@ -1077,12 +1104,21 @@ class DiscoveryJobRepository:
         ).all()
         for child in children:
             if child.state == DiscoveryJobStatus.QUEUED.value:
-                self.transition(
-                    tenant_id=tenant_id,
-                    job_id=child.id,
-                    target_state=target_state,
-                    failure_code=failure_code,
-                    failure_message=message,
+                self.session.execute(
+                    update(DiscoveryJobRecord)
+                    .where(
+                        DiscoveryJobRecord.id == child.id,
+                        DiscoveryJobRecord.tenant_id == tenant_id,
+                    )
+                    .values(
+                        state=target_state.value,
+                        failure_code=failure_code,
+                        failure_message=message,
+                        completed_at=_utc_now(),
+                        execution_owner=None,
+                        lease_expires_at=None,
+                        last_heartbeat_at=None,
+                    )
                 )
                 continue
             if child.execution_owner != execution_owner:
@@ -1095,7 +1131,7 @@ class DiscoveryJobRepository:
                 failure_message=message,
                 expected_execution_owner=execution_owner,
             )
-        return self.transition(
+        terminal = self.transition(
             tenant_id=tenant_id,
             job_id=job_id,
             target_state=target_state,
@@ -1103,6 +1139,17 @@ class DiscoveryJobRepository:
             failure_message=message,
             expected_execution_owner=execution_owner,
         )
+        target = self.session.get(DiscoveryTargetRecord, job.target_id)
+        if target is not None and target.scope_type in {"ip_range", "cidr_network"}:
+            from backend.app.discovery.fanout import DiscoveryFanoutService
+
+            DiscoveryFanoutService.reconcile_parent_job(
+                self.session,
+                tenant_id=tenant_id,
+                parent_job_id=job_id,
+                interrupted=not cancel,
+            )
+        return terminal
 
     def record_selection(
         self,
@@ -1206,12 +1253,7 @@ class DiscoveryTransportAttemptRepository:
             started_at = started_at.replace(tzinfo=UTC)
         record.duration_ms = max(
             0,
-            int(
-                (
-                    completed_at - (started_at or completed_at)
-                ).total_seconds()
-                * 1000
-            ),
+            int((completed_at - (started_at or completed_at)).total_seconds() * 1000),
         )
         self.session.flush()
         return record
@@ -1285,9 +1327,16 @@ class DiscoveryEvidenceRepository:
     ) -> tuple[DiscoveryEvidenceRecord, ...]:
         statement = (
             select(DiscoveryEvidenceRecord)
+            .join(
+                DiscoveryJobRecord,
+                DiscoveryJobRecord.id == DiscoveryEvidenceRecord.job_id,
+            )
             .where(
                 DiscoveryEvidenceRecord.tenant_id == tenant_id,
-                DiscoveryEvidenceRecord.job_id == job_id,
+                or_(
+                    DiscoveryEvidenceRecord.job_id == job_id,
+                    DiscoveryJobRecord.parent_job_id == job_id,
+                ),
             )
             .order_by(DiscoveryEvidenceRecord.sequence.asc())
         )

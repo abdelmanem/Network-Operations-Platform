@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -12,9 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.collectors.registry import CollectorRegistry
-from backend.app.discovery.contracts import DiscoveryScopeType
+from backend.app.discovery.contracts import (
+    DiscoveryFailureCode,
+    DiscoveryJobStatus,
+    DiscoveryScopeType,
+)
 from backend.app.discovery.execution import DiscoveryExecutionService
 from backend.app.discovery.leases import DISCOVERY_JOB_LEASE_SECONDS
+from backend.app.discovery.result_states import DiscoveryResultState
 from backend.app.discovery.scopes import DiscoveryScope
 from backend.app.persistence.discovery_repositories import (
     DiscoveryCancellationConflictError,
@@ -24,6 +30,7 @@ from backend.app.persistence.models import (
     DiscoveryDeviceResultRecord,
     DiscoveryJobRecord,
     DiscoveryRunRecord,
+    DiscoveryRunStatus,
     DiscoveryTargetRecord,
 )
 
@@ -64,7 +71,12 @@ class DiscoveryFanoutService:
             raise ValueError("Discovery scope target was not found.")
         jobs = DiscoveryJobRepository(self.session)
         if jobs.cancellation_requested(tenant_id=tenant_id, job_id=parent_job_id):
-            return ()
+            return self.reconcile_parent_job(
+                self.session,
+                tenant_id=tenant_id,
+                parent_job_id=parent_job_id,
+                max_targets=self.max_targets,
+            )
 
         addresses = DiscoveryScope(
             scope_type=DiscoveryScopeType(target.scope_type),
@@ -72,10 +84,10 @@ class DiscoveryFanoutService:
             scope_end=target.scope_end,
             scope_cidr=target.scope_cidr,
         ).expand(max_targets=self.max_targets)
+        self._persist_expected_addresses(parent, addresses)
+        self.session.commit()
         children: list[tuple[DiscoveryJobRecord, DiscoveryDeviceResultRecord]] = []
         for address in addresses:
-            if jobs.cancellation_requested(tenant_id=tenant_id, job_id=parent_job_id):
-                break
             children.append(self._create_child(tenant_id, parent, target, address))
         self.session.commit()
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -112,8 +124,6 @@ class DiscoveryFanoutService:
                 result.failure_message = outcome.job.failure_message
                 result.completed_at = datetime.now(UTC)
                 if result.result_state is None:
-                    from backend.app.discovery.result_states import DiscoveryResultState
-
                     if outcome.job.state == "succeeded":
                         result.result_state = DiscoveryResultState.DISCOVERED.value
                     elif outcome.job.failure_code in {
@@ -147,49 +157,15 @@ class DiscoveryFanoutService:
 
         await asyncio.gather(*(run_child(child, result) for child, result in children))
 
-        # Aggregate summary counts into parent DiscoveryRunRecord
-        if parent.run_id is not None:
-            from backend.app.discovery.result_states import DiscoveryResultState
-
-            parent_run = self.session.get(DiscoveryRunRecord, parent.run_id)
-            if parent_run is not None:
-                from collections import Counter
-
-                all_results = [r for _, r in children]
-                state_counts: Counter[str] = Counter()
-                for r in all_results:
-                    state = r.result_state
-                    if state is None:
-                        state = DiscoveryResultState.UNREACHABLE.value
-                    state_counts[state] += 1
-
-                total = len(all_results)
-                run_metadata = dict(parent_run.metadata_json or {})
-                run_metadata["summary_calculated"] = True
-                self.session.execute(
-                    update(DiscoveryRunRecord)
-                    .where(DiscoveryRunRecord.id == parent_run.id)
-                    .values(
-                        total_scanned=total,
-                        total_discovered=state_counts.get(
-                            DiscoveryResultState.DISCOVERED.value, 0
-                        ),
-                        total_unreachable=state_counts.get(
-                            DiscoveryResultState.UNREACHABLE.value, 0
-                        ),
-                        total_reachable_no_management=state_counts.get(
-                            DiscoveryResultState.REACHABLE_NO_MANAGEMENT.value, 0
-                        ),
-                        total_authentication_failed=state_counts.get(
-                            DiscoveryResultState.AUTHENTICATION_FAILED.value, 0
-                        ),
-                        total_partial_discovery=state_counts.get(
-                            DiscoveryResultState.PARTIAL_DISCOVERY.value, 0
-                        ),
-                        metadata_json=run_metadata,
-                    )
-                )
-                self.session.commit()
+        self.reconcile_parent_job(
+            self.session,
+            tenant_id=tenant_id,
+            parent_job_id=parent_job_id,
+            interrupted=not jobs.cancellation_requested(
+                tenant_id=tenant_id, job_id=parent_job_id
+            ),
+            max_targets=self.max_targets,
+        )
 
         return tuple(result for _, result in children)
 
@@ -219,6 +195,7 @@ class DiscoveryFanoutService:
             result.state = "cancelled"
         result.failure_code = "CANCELLED"
         result.failure_message = reason
+        result.result_state = "cancelled"
         result.completed_at = datetime.now(UTC)
         self.session.commit()
 
@@ -281,9 +258,7 @@ class DiscoveryFanoutService:
             target.credential_reference = scope.credential_reference
             target.credential_profile_id = scope.credential_profile_id
             target.credential_references = dict(scope.credential_references)
-            target.allowed_fallback_transports = list(
-                scope.allowed_fallback_transports
-            )
+            target.allowed_fallback_transports = list(scope.allowed_fallback_transports)
             target.allow_insecure_telnet = bool(
                 getattr(scope, "allow_insecure_telnet", False)
             )
@@ -320,6 +295,185 @@ class DiscoveryFanoutService:
         self.session.add(result)
         self.session.flush()
         return child, result
+
+    def _persist_expected_addresses(
+        self, parent: DiscoveryJobRecord, addresses: tuple[str, ...]
+    ) -> None:
+        if parent.run_id is None:
+            return
+        run = self.session.get(DiscoveryRunRecord, parent.run_id)
+        if run is None:
+            return
+        metadata = dict(run.metadata_json or {})
+        if "expected_addresses" not in metadata:
+            metadata["expected_addresses"] = list(addresses)
+            self.session.execute(
+                update(DiscoveryRunRecord)
+                .where(DiscoveryRunRecord.id == parent.run_id)
+                .values(metadata_json=metadata)
+            )
+        self.session.flush()
+
+    @classmethod
+    def reconcile_parent_job(
+        cls,
+        session: Session,
+        *,
+        tenant_id: str,
+        parent_job_id: UUID,
+        interrupted: bool = False,
+        max_targets: int = 4096,
+    ) -> tuple[DiscoveryDeviceResultRecord, ...]:
+        """Reconcile durable child outcomes and finalize the parent run."""
+        parent = session.get(DiscoveryJobRecord, parent_job_id)
+        if parent is None or parent.tenant_id != tenant_id:
+            return ()
+        target = session.get(DiscoveryTargetRecord, parent.target_id)
+        parent_run = session.get(DiscoveryRunRecord, parent.run_id)
+        metadata = (
+            dict(parent_run.metadata_json or {}) if parent_run is not None else {}
+        )
+        expected_addresses = tuple(metadata.get("expected_addresses", ()))
+        if not expected_addresses and target is not None:
+            expected_addresses = DiscoveryScope(
+                scope_type=DiscoveryScopeType(target.scope_type),
+                address=target.address,
+                scope_end=target.scope_end,
+                scope_cidr=target.scope_cidr,
+            ).expand(max_targets=max_targets)
+            metadata["expected_addresses"] = list(expected_addresses)
+            if parent_run is not None:
+                session.execute(
+                    update(DiscoveryRunRecord)
+                    .where(DiscoveryRunRecord.id == parent.run_id)
+                    .values(metadata_json=metadata)
+                )
+        if not expected_addresses or target is None:
+            return ()
+        results = list(
+            session.scalars(
+                select(DiscoveryDeviceResultRecord).where(
+                    DiscoveryDeviceResultRecord.tenant_id == tenant_id,
+                    DiscoveryDeviceResultRecord.discovery_job_id == parent_job_id,
+                )
+            )
+        )
+        by_address = {result.address: result for result in results}
+        outcome_state = "interrupted" if interrupted else "cancelled"
+        outcome_code = (
+            DiscoveryFailureCode.DISCOVERY_FAILED.value
+            if interrupted
+            else DiscoveryFailureCode.CANCELLED.value
+        )
+        outcome_message = (
+            "Fan-out execution was interrupted before this address completed."
+            if interrupted
+            else "Fan-out execution was cancelled before this address completed."
+        )
+
+        for address in expected_addresses:
+            result = by_address.get(address)
+            if result is None:
+                _, result = cls(session, CollectorRegistry())._create_child(
+                    tenant_id, parent, target, address
+                )
+                results.append(result)
+            child = session.get(DiscoveryJobRecord, result.child_job_id)
+            if child is not None and not DiscoveryJobStatus(child.state).is_terminal:
+                session.execute(
+                    update(DiscoveryJobRecord)
+                    .where(
+                        DiscoveryJobRecord.id == child.id,
+                        DiscoveryJobRecord.tenant_id == tenant_id,
+                    )
+                    .values(
+                        state=(
+                            DiscoveryJobStatus.FAILED.value
+                            if interrupted
+                            else DiscoveryJobStatus.CANCELLED.value
+                        ),
+                        failure_code=outcome_code,
+                        failure_message=outcome_message,
+                        completed_at=datetime.now(UTC),
+                        execution_owner=None,
+                        lease_expires_at=None,
+                        last_heartbeat_at=None,
+                    )
+                )
+            if result.result_state is None or result.state in {
+                DiscoveryJobStatus.QUEUED.value,
+                DiscoveryJobStatus.RUNNING.value,
+                "discovering",
+            }:
+                result.state = (
+                    DiscoveryJobStatus.FAILED.value
+                    if interrupted
+                    else DiscoveryJobStatus.CANCELLED.value
+                )
+                result.result_state = outcome_state
+                result.failure_code = outcome_code
+                result.failure_message = outcome_message
+                result.completed_at = datetime.now(UTC)
+
+        session.flush()
+        cls._finalize_parent_run(
+            session,
+            parent=parent,
+            expected_count=len(expected_addresses),
+            results=results,
+        )
+        session.commit()
+        return tuple(results)
+
+    @staticmethod
+    def _finalize_parent_run(
+        session: Session,
+        *,
+        parent: DiscoveryJobRecord,
+        expected_count: int,
+        results: list[DiscoveryDeviceResultRecord],
+    ) -> None:
+        if parent.run_id is None:
+            return
+        parent_run = session.get(DiscoveryRunRecord, parent.run_id)
+        if parent_run is None:
+            return
+        counts = Counter(result.result_state for result in results)
+        metadata = dict(parent_run.metadata_json or {})
+        metadata["summary_calculated"] = True
+        metadata["total_cancelled"] = counts.get(
+            DiscoveryResultState.CANCELLED.value, 0
+        )
+        metadata["total_interrupted"] = counts.get(
+            DiscoveryResultState.INTERRUPTED.value, 0
+        )
+        session.execute(
+            update(DiscoveryRunRecord)
+            .where(DiscoveryRunRecord.id == parent.run_id)
+            .values(
+                total_scanned=expected_count,
+                total_discovered=counts.get(DiscoveryResultState.DISCOVERED.value, 0),
+                total_unreachable=counts.get(DiscoveryResultState.UNREACHABLE.value, 0),
+                total_reachable_no_management=counts.get(
+                    DiscoveryResultState.REACHABLE_NO_MANAGEMENT.value, 0
+                ),
+                total_authentication_failed=counts.get(
+                    DiscoveryResultState.AUTHENTICATION_FAILED.value, 0
+                ),
+                total_partial_discovery=counts.get(
+                    DiscoveryResultState.PARTIAL_DISCOVERY.value, 0
+                ),
+                status=(
+                    DiscoveryRunStatus.SUCCEEDED.value
+                    if counts.get(DiscoveryResultState.DISCOVERED.value, 0) > 0
+                    and counts.get(DiscoveryResultState.CANCELLED.value, 0) == 0
+                    and counts.get(DiscoveryResultState.INTERRUPTED.value, 0) == 0
+                    else DiscoveryRunStatus.FAILED.value
+                ),
+                finished_at=datetime.now(UTC),
+                metadata_json=metadata,
+            )
+        )
 
 
 __all__ = ["DiscoveryFanoutService"]

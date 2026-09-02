@@ -45,6 +45,12 @@ class DiscoveryResultState(StrEnum):
     # Full successful discovery with complete inventory collection
     DISCOVERED = "discovered"
 
+    # Work was intentionally stopped before discovery completed
+    CANCELLED = "cancelled"
+
+    # Work was interrupted by worker/process failure and was not executed
+    INTERRUPTED = "interrupted"
+
     @property
     def is_reachable(self) -> bool:
         """Return True if the host was reachable at the IP layer."""
