@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
 from sqlalchemy.orm import Session
 
 from backend.app.api.v1.dependencies import get_application_container, get_db_session
@@ -94,6 +94,7 @@ async def run_netbox_sync_background(
     container: Any,  # noqa: ANN401 - container is intentionally dynamic
     actor_id: UUID,
     audit_service: AuditService,
+    tenant_id: str = "default",
 ) -> None:
     """FastAPI background task to execute NetBox inventory synchronization."""
     repo = SnapshotRepository(db_session)
@@ -115,7 +116,7 @@ async def run_netbox_sync_background(
         # Persist the snapshot in PostgreSQL database using repo.add_netbox_snapshot
         # Wrap in try/except to ensure atomicity: if add fails, rollback all pending changes
         try:
-            repo.add_netbox_snapshot(snapshot)
+            repo.add_netbox_snapshot(snapshot, tenant_id=tenant_id)
             db_session.commit()  # Commit snapshot atomically
         except Exception as snapshot_exc:
             logger.exception("Failed to persist NetBox snapshot")
@@ -307,6 +308,7 @@ async def synchronize_inventory(
     user: Annotated[User, Depends(get_current_user)],
     _: Annotated[User, Depends(require_permission("inventory:write"))],
     audit_service: Annotated[AuditService, Depends(get_audit_service)],
+    tenant_id: str = Header(default="default", alias="X-Tenant-ID"),
 ) -> NetBoxSyncResponse:
     """Submit a background job to synchronize NetBox expected state snapshot."""
     container = get_application_container(request)
@@ -379,6 +381,7 @@ async def synchronize_inventory(
         container,
         user.id,
         audit_service,
+        tenant_id,
     )
 
     return NetBoxSyncResponse(job_id=job_id, status="queued")

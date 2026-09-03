@@ -186,6 +186,7 @@ class MultiTransportDiscoveryOrchestrator:
         host_is_reachable = False
         any_auth_failed = False
         any_service_available = False
+        any_transport_unavailable = False
         has_partial_data = False
         is_fully_discovered = False
 
@@ -240,7 +241,7 @@ class MultiTransportDiscoveryOrchestrator:
 
             else:
                 # Analyze failure for outcome classification
-                is_reachable, auth_failed, service_avail = classify_transport_failure(
+                is_reachable, auth_failed, service_avail, transport_unavail = classify_transport_failure(
                     attempt_result.failure_code.value
                     if attempt_result.failure_code
                     else None
@@ -252,6 +253,8 @@ class MultiTransportDiscoveryOrchestrator:
                     any_auth_failed = True
                 if service_avail:
                     any_service_available = True
+                if transport_unavail:
+                    any_transport_unavailable = True
 
                 # Determine failure code for attempt record
                 failure_code_str = None
@@ -283,6 +286,7 @@ class MultiTransportDiscoveryOrchestrator:
             auth_failed=any_auth_failed,
             has_partial_data=has_partial_data,
             is_fully_discovered=is_fully_discovered,
+            transport_unavailable=any_transport_unavailable,
         )
 
         return MultiTransportDiscoveryResult(

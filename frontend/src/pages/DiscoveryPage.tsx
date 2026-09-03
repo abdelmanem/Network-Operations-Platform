@@ -18,6 +18,7 @@ import {
   testDiscoveryCredentialProfile,
   updateDiscoveryCredentialProfile,
   updateDiscoveryTarget,
+  getDiscoveryCidrVariance,
 } from '../api/discovery'
 import type {
   CredentialProfileResponse,
@@ -28,6 +29,7 @@ import type {
   DiscoveryRunSummaryResponse,
   DiscoveryTransportAttemptResponse,
   DiscoveryTargetResponse,
+  CidrVarianceSummaryResponse,
 } from '../types/api'
 import './DiscoveryPage.css'
 
@@ -1233,17 +1235,139 @@ function resultBadgeLabel(result: DiscoveryDeviceResultResponse) {
   return state ? state.replaceAll('_', ' ') : 'Unknown'
 }
 
+function CidrVarianceSummary({ jobId }: { jobId: string }) {
+  const [variance, setVariance] = useState<CidrVarianceSummaryResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showDrilldown, setShowDrilldown] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    async function fetchVariance() {
+      setLoading(true)
+      try {
+        const data = await getDiscoveryCidrVariance(jobId)
+        if (mounted) {
+          setVariance(data)
+          setError(null)
+        }
+      } catch (err) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load variance')
+        }
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    void fetchVariance()
+    return () => { mounted = false }
+  }, [jobId])
+
+  if (loading) return <div className="discovery-variance-summary loading">Loading variance summary…</div>
+  if (error) return <div className="discovery-variance-summary error">Failed to load variance: {error}</div>
+  if (!variance) return null
+
+  const { summary, variances } = variance
+
+  return (
+    <div className="discovery-variance-summary" style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '4px' }}>
+      <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>CIDR Discovery vs NetBox</h3>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Discovered</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{summary.discovered}</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>NetBox</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{summary.netbox}</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Matched</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{summary.matched}</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Variances</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{summary.variances}</div>
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>NetBox only</span>
+          <strong>{summary.netbox_only}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Discovered only</span>
+          <strong>{summary.discovered_only}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Identity mismatch</span>
+          <strong>{summary.identity_mismatch}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Unverified</span>
+          <strong>{summary.unverified}</strong>
+        </div>
+      </div>
+
+      {summary.unverified > 0 && (
+        <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-warning-subtle, #fff3cd)', color: 'var(--text-warning, #856404)', borderRadius: '4px' }}>
+          ⚠ {summary.unverified} addresses were not network-tested because transport was unavailable
+        </div>
+      )}
+
+      {summary.netbox_only > 0 && (
+        <div style={{ marginTop: '1rem' }}>
+          <button
+            type="button"
+            className="discovery-btn discovery-btn-ghost discovery-btn-compact"
+            onClick={() => setShowDrilldown(!showDrilldown)}
+          >
+            {showDrilldown ? 'Hide' : 'Show'} missing NetBox devices
+          </button>
+
+          {showDrilldown && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <table className="discovery-table">
+                <thead>
+                  <tr>
+                    <th>Address</th>
+                    <th>Expected Hostname</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variances.netbox_only.map((item, idx) => (
+                    <tr key={idx}>
+                      <td><code>{item.address}</code></td>
+                      <td>{item.expected_name || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DiscoveryResultsPanel({
   deviceResults,
   evidence,
   summary,
   attempts,
+  job,
+  target,
   onLoadAttempts,
 }: {
   deviceResults: DiscoveryDeviceResultResponse[]
   evidence: DiscoveryEvidenceResponse[]
   summary: DiscoveryRunSummaryResponse | null
   attempts: Record<string, DiscoveryTransportAttemptResponse[]>
+  job: DiscoveryApiJobResponse | null
+  target: DiscoveryTargetResponse | null
   onLoadAttempts: (resultId: string) => Promise<void>
 }) {
   if (deviceResults.length === 0 && evidence.length === 0) {
@@ -1274,6 +1398,10 @@ function DiscoveryResultsPanel({
           </div>
         </div>
       </div>
+
+      {target?.scope_type === 'cidr_network' && job && (job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled' || job.status === 'timed_out') ? (
+        <CidrVarianceSummary jobId={job.job_id} />
+      ) : null}
 
       {deviceResults.length > 0 ? (
         <div className="discovery-table-wrap">
@@ -2668,6 +2796,8 @@ export function DiscoveryPage() {
         evidence={evidence}
         summary={runSummary}
         attempts={attempts}
+        job={job}
+        target={selectedTarget}
         onLoadAttempts={async (resultId) => {
           const loadedAttempts = await getDiscoveryTransportAttempts(resultId)
           setAttempts((current) => ({

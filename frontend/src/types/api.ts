@@ -91,6 +91,37 @@ export interface DiscoveryRunListResponse {
   has_next: boolean
 }
 
+export interface VarianceItem {
+  address: string
+  name?: string | null
+  expected_name?: string | null
+  observed_name?: string | null
+  reason?: string | null
+}
+
+export interface CidrVarianceCounts {
+  discovered: number
+  netbox: number
+  matched: number
+  variances: number
+  netbox_only: number
+  discovered_only: number
+  identity_mismatch: number
+  unverified: number
+}
+
+export interface CidrVarianceData {
+  netbox_only: VarianceItem[]
+  discovered_only: VarianceItem[]
+  identity_mismatch: VarianceItem[]
+  unverified: VarianceItem[]
+}
+
+export interface CidrVarianceSummaryResponse {
+  summary: CidrVarianceCounts
+  variances: CidrVarianceData
+}
+
 export interface DiscoveryJobRequest {
   collector_contexts: Array<{
     target: {

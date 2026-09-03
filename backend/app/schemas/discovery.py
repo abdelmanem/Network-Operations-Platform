@@ -463,9 +463,42 @@ class DiscoveryRunSummary(BaseModel):
     total_reachable_no_management: int | None = Field(default=None, ge=0)
     total_authentication_failed: int | None = Field(default=None, ge=0)
     total_partial_discovery: int | None = Field(default=None, ge=0)
+    total_unverified: int | None = Field(default=None, ge=0)
 
 
 class DiscoveryRunListResponse(PaginatedResponse[DiscoveryRunSummary]):
     """Paginated discovery run history."""
 
     pass
+
+
+class VarianceItem(BaseModel):
+    address: str
+    name: str | None = None
+    expected_name: str | None = None
+    observed_name: str | None = None
+    reason: str | None = None
+
+
+class CidrVarianceCounts(BaseModel):
+    discovered: int
+    netbox: int
+    matched: int
+    variances: int
+    netbox_only: int
+    discovered_only: int
+    identity_mismatch: int
+    unverified: int
+
+
+class CidrVarianceData(BaseModel):
+    netbox_only: list[VarianceItem]
+    discovered_only: list[VarianceItem]
+    identity_mismatch: list[VarianceItem]
+    unverified: list[VarianceItem]
+
+
+class CidrVarianceSummaryResponse(BaseModel):
+    """Variance summary between discovered results and NetBox inside a CIDR."""
+    summary: CidrVarianceCounts
+    variances: CidrVarianceData

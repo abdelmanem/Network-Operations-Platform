@@ -573,6 +573,7 @@ class DiscoveryExecutionService:
                 self.snapshots.add_live_snapshot(
                     processed.normalized_result.snapshot,
                     discovery_run_id=job.run_id,
+                    tenant_id=tenant_id,
                 )
                 self._record_device_result(
                     job=job,
@@ -846,6 +847,7 @@ class DiscoveryExecutionService:
             self.snapshots.add_live_snapshot(
                 processed.normalized_result.snapshot,
                 discovery_run_id=job.run_id,
+                tenant_id=tenant_id,
             )
             self._record_device_result(
                 job=job,

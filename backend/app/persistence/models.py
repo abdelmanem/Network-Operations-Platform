@@ -121,6 +121,11 @@ class DiscoveryRunRecord(ImmutableHistoryMixin, BaseModel):
         nullable=True,
         default=0,
     )
+    total_unverified: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
 
     snapshots: Mapped[list[SnapshotRecord]] = relationship(
         back_populates="discovery_run",
@@ -419,6 +424,9 @@ class SnapshotRecord(ImmutableHistoryMixin, BaseModel):
     __tablename__ = "snapshots"
 
     source: Mapped[str] = mapped_column(String(32), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="default", index=True
+    )
     source_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

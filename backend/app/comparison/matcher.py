@@ -100,6 +100,21 @@ class InventoryMatcher:
             seen.add(value)
         return tuple(sorted(duplicates))
 
+    @classmethod
+    def identities_match(
+        cls,
+        expected_name: str | None,
+        expected_serial: str | None,
+        observed_name: str | None,
+        observed_serial: str | None,
+    ) -> bool:
+        """Check if two sets of identity attributes canonically match."""
+        if expected_name and observed_name and cls._normalize(expected_name) == cls._normalize(observed_name):
+            return True
+        if expected_serial and observed_serial and cls._normalize(expected_serial) == cls._normalize(observed_serial):
+            return True
+        return False
+
     @staticmethod
     def _normalize(value: str | None) -> str:
         return "" if value is None else value.strip().casefold()

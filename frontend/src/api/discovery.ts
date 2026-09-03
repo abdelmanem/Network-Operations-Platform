@@ -17,6 +17,7 @@ import type {
   DiscoveryTargetUpdateRequest,
   DiscoveryTransportAttemptResponse,
   DiscoveryRunSummaryResponse,
+  CidrVarianceSummaryResponse,
 } from '../types/api'
 import { api, normalizeApiError } from './client'
 
@@ -317,6 +318,19 @@ export async function getDiscoveryTransportAttempts(
   try {
     const response = await api.get<DiscoveryTransportAttemptResponse[]>(
       `/api/v1/discovery/devices/${resultId}/attempts`,
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(normalizeApiError(error))
+  }
+}
+
+export async function getDiscoveryCidrVariance(
+  jobId: string,
+): Promise<CidrVarianceSummaryResponse> {
+  try {
+    const response = await api.get<CidrVarianceSummaryResponse>(
+      `/api/v1/discovery/jobs/${jobId}/cidr-variance`,
     )
     return response.data
   } catch (error) {

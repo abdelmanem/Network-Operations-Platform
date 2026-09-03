@@ -68,6 +68,10 @@ from backend.app.schemas.discovery import (
     DiscoveryTargetResponse,
     DiscoveryTargetUpdateRequest,
     DiscoveryTransportAttemptResponse,
+    CidrVarianceSummaryResponse,
+    CidrVarianceCounts,
+    CidrVarianceData,
+    VarianceItem,
 )
 
 if TYPE_CHECKING:
@@ -629,6 +633,177 @@ def get_job_evidence(
 
 
 @router.get(
+    "/jobs/{job_id}/cidr-variance",
+    response_model=CidrVarianceSummaryResponse,
+    summary="Get CIDR discovery variance against NetBox",
+)
+def get_cidr_variance(
+    job_id: UUID,
+    db_session: Annotated[Session, Depends(get_db_session)],
+    _: Annotated[User, Depends(require_permission("discovery:job:read"))],
+    tenant_id: Annotated[str, Header(alias="X-Tenant-ID")],
+) -> CidrVarianceSummaryResponse:
+    import ipaddress
+    from backend.app.comparison.matcher import InventoryMatcher
+
+    def snapshot_ip(value: str | None) -> str | None:
+        return value.split("/", 1)[0] if value else None
+
+    job = DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Discovery job was not found.")
+
+    target = DiscoveryTargetRepository(db_session).get(tenant_id=tenant_id, target_id=job.target_id)
+    if target is None or target.scope_type != "cidr_network":
+        raise HTTPException(status_code=422, detail="Job target is not a CIDR network.")
+
+    run = db_session.scalars(
+        select(DiscoveryRunRecord).where(
+            DiscoveryRunRecord.id == job.run_id,
+            DiscoveryRunRecord.tenant_id == tenant_id,
+        )
+    ).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Discovery run not found.")
+
+    netbox_snapshot = db_session.scalars(
+        select(SnapshotRecord)
+        .where(
+            SnapshotRecord.source == "netbox",
+            SnapshotRecord.tenant_id == tenant_id,
+            SnapshotRecord.captured_at <= run.started_at
+        )
+        .order_by(SnapshotRecord.captured_at.desc(), SnapshotRecord.id.desc())
+        .limit(1)
+    ).first()
+
+    expected_devices = []
+    if netbox_snapshot:
+        expected_devices = db_session.scalars(
+            select(SnapshotDeviceRecord)
+            .join(SnapshotRecord, SnapshotRecord.id == SnapshotDeviceRecord.snapshot_id)
+            .where(
+                SnapshotDeviceRecord.snapshot_id == netbox_snapshot.id,
+                SnapshotRecord.tenant_id == tenant_id,
+            )
+        ).all()
+        try:
+            cidr = ipaddress.ip_network(target.scope_cidr or target.address, strict=False)
+            expected_devices = [
+                d
+                for d in expected_devices
+                if d.management_ip
+                and ipaddress.ip_address(snapshot_ip(d.management_ip)) in cidr
+            ]
+        except ValueError:
+            expected_devices = []
+
+    discovery_results = db_session.scalars(
+        select(DiscoveryDeviceResultRecord).where(
+            DiscoveryDeviceResultRecord.tenant_id == tenant_id,
+            DiscoveryDeviceResultRecord.discovery_job_id == job_id,
+        )
+    ).all()
+
+    discovered_by_ip = {}
+    unverified_list = []
+
+    for r in discovery_results:
+        res_state = "unverified" if r.failure_code == "TRANSPORT_UNAVAILABLE" and r.result_state == "reachable_no_management" else r.result_state
+        if res_state == "unverified":
+            unverified_list.append(VarianceItem(
+                address=r.address,
+                reason=r.failure_message or "Transport unavailable"
+            ))
+        elif res_state in {"discovered", "partial_discovery"}:
+            discovered_by_ip[r.address] = r
+
+    live_snapshot = db_session.scalars(
+        select(SnapshotRecord)
+        .where(
+            SnapshotRecord.discovery_run_id == job.run_id,
+            SnapshotRecord.source == "live",
+            SnapshotRecord.tenant_id == tenant_id,
+        )
+    ).first()
+
+    live_devices_by_ip = {}
+    if live_snapshot:
+        live_devices = db_session.scalars(
+            select(SnapshotDeviceRecord)
+            .join(SnapshotRecord, SnapshotRecord.id == SnapshotDeviceRecord.snapshot_id)
+            .where(
+                SnapshotDeviceRecord.snapshot_id == live_snapshot.id,
+                SnapshotRecord.tenant_id == tenant_id,
+            )
+        ).all()
+        for d in live_devices:
+            normalized_ip = snapshot_ip(d.management_ip)
+            if normalized_ip:
+                live_devices_by_ip[normalized_ip] = d
+
+    netbox_by_ip = {
+        normalized_ip: d
+        for d in expected_devices
+        if (normalized_ip := snapshot_ip(d.management_ip)) is not None
+    }
+
+    matched = []
+    netbox_only = []
+    discovered_only = []
+    identity_mismatch = []
+
+    all_ips = set(netbox_by_ip.keys()) | set(discovered_by_ip.keys())
+    for ip in all_ips:
+        expected = netbox_by_ip.get(ip)
+        observed_record = discovered_by_ip.get(ip)
+
+        if expected and not observed_record:
+            netbox_only.append(VarianceItem(address=ip, expected_name=expected.name))
+        elif observed_record and not expected:
+            live_dev = live_devices_by_ip.get(ip)
+            observed_name = live_dev.name if live_dev else observed_record.hostname
+            discovered_only.append(VarianceItem(address=ip, observed_name=observed_name))
+        elif expected and observed_record:
+            live_dev = live_devices_by_ip.get(ip)
+            observed_name = live_dev.name if live_dev else observed_record.hostname
+            observed_serial = live_dev.serial_number if live_dev else None
+
+            is_match = InventoryMatcher.identities_match(
+                expected_name=expected.name,
+                expected_serial=expected.serial_number,
+                observed_name=observed_name,
+                observed_serial=observed_serial,
+            )
+            if is_match:
+                matched.append(ip)
+            else:
+                identity_mismatch.append(VarianceItem(
+                    address=ip,
+                    expected_name=expected.name,
+                    observed_name=observed_name
+                ))
+
+    return CidrVarianceSummaryResponse(
+        summary=CidrVarianceCounts(
+            discovered=len(discovered_by_ip),
+            netbox=len(expected_devices),
+            matched=len(matched),
+            variances=len(netbox_only) + len(discovered_only) + len(identity_mismatch),
+            netbox_only=len(netbox_only),
+            discovered_only=len(discovered_only),
+            identity_mismatch=len(identity_mismatch),
+            unverified=len(unverified_list),
+        ),
+        variances=CidrVarianceData(
+            netbox_only=netbox_only,
+            discovered_only=discovered_only,
+            identity_mismatch=identity_mismatch,
+            unverified=unverified_list,
+        )
+    )
+
+@router.get(
     "/jobs/{job_id}/devices",
     response_model=list[DiscoveryDeviceResultResponse],
     summary="List per-device discovery results",
@@ -671,7 +846,7 @@ def get_job_devices(
                 "model": models_by_management_ip.get(record.address),
                 "platform": record.platform,
                 "state": record.state,
-                "result_state": record.result_state,
+                "result_state": "unverified" if record.failure_code == "TRANSPORT_UNAVAILABLE" and record.result_state == "reachable_no_management" else record.result_state,
                 "selected_transport": record.selected_transport,
                 "failure_code": record.failure_code,
                 "failure_message": record.failure_message,

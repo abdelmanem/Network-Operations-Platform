@@ -110,12 +110,14 @@ class SnapshotRepository:
         snapshot: LiveInventorySnapshot,
         *,
         discovery_run_id: UUID | None = None,
+        tenant_id: str = "default",
     ) -> SnapshotRecord:
         """Persist one immutable live snapshot and child inventory records."""
 
         record = SnapshotRecord(
             id=uuid4(),
             source=SnapshotSource.LIVE.value,
+            tenant_id=tenant_id,
             source_label=snapshot.source,
             captured_at=snapshot.captured_at,
             schema_version=snapshot.version,
@@ -129,6 +131,8 @@ class SnapshotRepository:
     def add_netbox_snapshot(
         self,
         snapshot: NetBoxInventorySnapshot,
+        *,
+        tenant_id: str = "default",
     ) -> SnapshotRecord:
         """Persist one immutable canonical NetBox inventory snapshot."""
 
@@ -142,6 +146,7 @@ class SnapshotRepository:
         record = SnapshotRecord(
             id=uuid4(),
             source=SnapshotSource.NETBOX.value,
+            tenant_id=tenant_id,
             source_label="netbox",
             captured_at=self._now_from_netbox_snapshot(),
             schema_version="netbox-canonical-v1",

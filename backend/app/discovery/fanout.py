@@ -132,9 +132,10 @@ class DiscoveryFanoutService:
                         result.result_state = (
                             DiscoveryResultState.AUTHENTICATION_FAILED.value
                         )
+                    elif outcome.job.failure_code == "TRANSPORT_UNAVAILABLE":
+                        result.result_state = DiscoveryResultState.UNVERIFIED.value
                     elif outcome.job.failure_code in {
                         "CONNECTION_REFUSED",
-                        "TRANSPORT_UNAVAILABLE",
                         "UNSUPPORTED_CAPABILITY",
                         "UNSUPPORTED_CREDENTIAL",
                         "UNSUPPORTED_PLATFORM",
@@ -463,6 +464,7 @@ class DiscoveryFanoutService:
                 total_partial_discovery=counts.get(
                     DiscoveryResultState.PARTIAL_DISCOVERY.value, 0
                 ),
+                total_unverified=counts.get(DiscoveryResultState.UNVERIFIED.value, 0),
                 status=(
                     DiscoveryRunStatus.SUCCEEDED.value
                     if counts.get(DiscoveryResultState.DISCOVERED.value, 0) > 0

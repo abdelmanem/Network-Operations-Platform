@@ -45,6 +45,9 @@ class DiscoveryResultState(StrEnum):
     # Full successful discovery with complete inventory collection
     DISCOVERED = "discovered"
 
+    # Targeted but not verified because of circuit breakers or early transport failure
+    UNVERIFIED = "unverified"
+
     # Work was intentionally stopped before discovery completed
     CANCELLED = "cancelled"
 
@@ -74,6 +77,7 @@ class DiscoveryResultState(StrEnum):
         auth_failed: bool,
         has_partial_data: bool,
         is_fully_discovered: bool,
+        transport_unavailable: bool = False,
     ) -> DiscoveryResultState:
         """Determine the appropriate result state from outcome indicators.
 
@@ -83,6 +87,7 @@ class DiscoveryResultState(StrEnum):
             auth_failed: Whether authentication failed for available services
             has_partial_data: Whether partial discovery data was collected
             is_fully_discovered: Whether full discovery succeeded
+            transport_unavailable: Whether discovery was blocked before testing
 
         Returns:
             The appropriate DiscoveryResultState classification
@@ -96,6 +101,9 @@ class DiscoveryResultState(StrEnum):
         if auth_failed:
             return cls.AUTHENTICATION_FAILED
 
+        if transport_unavailable:
+            return cls.UNVERIFIED
+
         if not is_reachable:
             return cls.UNREACHABLE
 
@@ -108,47 +116,47 @@ class DiscoveryResultState(StrEnum):
 
 def classify_transport_failure(
     failure_code: DiscoveryFailureCode | str | None,
-) -> tuple[bool, bool, bool]:
-    """Classify a transport failure into reachability, auth, and service indicators.
+) -> tuple[bool, bool, bool, bool]:
+    """Classify a transport failure into reachability, auth, service, and unavailability indicators.
 
     Args:
         failure_code: The discovery failure code from a transport attempt
 
     Returns:
-        Tuple of (is_reachable, auth_failed, service_available) booleans
+        Tuple of (is_reachable, auth_failed, service_available, transport_unavailable) booleans
     """
     from backend.app.discovery.contracts import DiscoveryFailureCode
 
     if failure_code is None:
         # Success case - all good
-        return True, False, True
+        return True, False, True, False
 
     if isinstance(failure_code, str):
         try:
             failure_code = DiscoveryFailureCode(failure_code)
         except ValueError:
             # Unknown failure code - assume not reachable
-            return False, False, False
+            return False, False, False, False
 
     # Authentication failures indicate reachability but auth failure
     if failure_code == DiscoveryFailureCode.AUTHENTICATION_FAILED:
-        return True, True, True
+        return True, True, True, False
 
     # Credential resolution failures are auth-related
     if failure_code == DiscoveryFailureCode.CREDENTIAL_RESOLUTION_FAILED:
-        return True, True, False
+        return True, True, False, False
 
     # Unsupported credential for this transport - host up, auth not attempted
     if failure_code == DiscoveryFailureCode.UNSUPPORTED_CREDENTIAL:
-        return True, False, True
+        return True, False, True, False
 
     # Transport disabled by policy (e.g. Telnet not allowed) - host up, service not tried
     if failure_code == DiscoveryFailureCode.TRANSPORT_DISABLED:
-        return True, False, False
+        return True, False, False, False
 
     # Connection refused means reachable but service not available
     if failure_code == DiscoveryFailureCode.CONNECTION_REFUSED:
-        return True, False, False
+        return True, False, False, False
 
     # Connection timeouts might be network or host
     if failure_code in (
@@ -158,11 +166,11 @@ def classify_transport_failure(
         DiscoveryFailureCode.DISCOVERY_TIMEOUT,
     ):
         # Assume not reachable for timeout cases
-        return False, False, False
+        return False, False, False, False
 
-    # Transport unavailable means host might be up but service not
+    # Transport unavailable means the circuit breaker blocked it before testing
     if failure_code == DiscoveryFailureCode.TRANSPORT_UNAVAILABLE:
-        return True, False, False
+        return False, False, False, True
 
     # Generic collector/parsing/discovery failures are not evidence of network
     # unreachability; the host and management service were likely reachable but
@@ -175,16 +183,16 @@ def classify_transport_failure(
         DiscoveryFailureCode.EVIDENCE_PERSISTENCE_FAILED,
         DiscoveryFailureCode.SNAPSHOT_PERSISTENCE_FAILED,
     }:
-        return True, False, True
+        return True, False, True, False
 
     # Connection failed - could be various reasons
     if failure_code == DiscoveryFailureCode.CONNECTION_FAILED:
-        return False, False, False
+        return False, False, False, False
 
     # Default - unknown failures are treated as reachable but not successfully
     # managed until proven otherwise; this avoids false "host unreachable"
     # classifications for application-level collector errors.
-    return True, False, True
+    return True, False, True, False
 
 
 __all__ = [
