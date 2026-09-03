@@ -129,6 +129,7 @@ const resultStateMessages: Record<string, string> = {
   authentication_failed: 'Management service is reachable but authentication failed',
   reachable_no_management: 'Host is reachable but no supported management service responded',
   unreachable: 'Host is unreachable',
+  unverified: 'Management transport was unavailable, so this address was not network-tested',
 }
 
 function normalizedTransport(value: string | null | undefined) {
@@ -1333,14 +1334,22 @@ function CidrVarianceSummary({ jobId }: { jobId: string }) {
                 <thead>
                   <tr>
                     <th>Address</th>
-                    <th>Expected Hostname</th>
+                    <th>Name</th>
+                    <th>Serial</th>
+                    <th>Model</th>
+                    <th>Role</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {variances.netbox_only.map((item, idx) => (
                     <tr key={idx}>
                       <td><code>{item.address}</code></td>
-                      <td>{item.expected_name || '—'}</td>
+                      <td>{item.name || item.expected_name || '—'}</td>
+                      <td>{item.serial || '—'}</td>
+                      <td>{item.model || '—'}</td>
+                      <td>{item.role || '—'}</td>
+                      <td>{item.status || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1451,7 +1460,7 @@ function DiscoveryResultsPanel({
                         void onLoadAttempts(result.result_id)
                       }
                     }}>
-                      <summary>Attempts</summary>
+                      <summary>{attempts[result.result_id]?.length ?? '—'}</summary>
                       {attempts[result.result_id] ? (
                         <ol className="discovery-attempt-list">
                           {attempts[result.result_id].map((attempt) => (

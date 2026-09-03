@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,6 +12,7 @@ const {
   getDeviceResults,
   getEvidence,
   getRunSummary,
+  getCidrVariance,
   getTransportAttempts,
   createCredentialProfile,
   deleteCredentialProfile,
@@ -30,6 +31,7 @@ const {
   getDeviceResults: vi.fn(),
   getEvidence: vi.fn(),
   getRunSummary: vi.fn(),
+  getCidrVariance: vi.fn(),
   getTransportAttempts: vi.fn(),
   createCredentialProfile: vi.fn(),
   deleteCredentialProfile: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock('../api/discovery', () => ({
   getDiscoveryDeviceResults: getDeviceResults,
   getDiscoveryEvidence: getEvidence,
   getDiscoveryRunSummary: getRunSummary,
+  getDiscoveryCidrVariance: getCidrVariance,
   getDiscoveryTransportAttempts: getTransportAttempts,
   createDiscoveryCredentialProfile: createCredentialProfile,
   deleteDiscoveryCredentialProfile: deleteCredentialProfile,
@@ -70,6 +73,7 @@ describe('DiscoveryPage', () => {
     getDeviceResults.mockReset()
     getEvidence.mockReset()
     getRunSummary.mockReset()
+    getCidrVariance.mockReset()
     getTransportAttempts.mockReset()
     createCredentialProfile.mockReset()
     deleteCredentialProfile.mockReset()
@@ -78,6 +82,7 @@ describe('DiscoveryPage', () => {
     getCredentialProfile.mockReset()
     updateCredentialProfile.mockReset()
     getRunSummary.mockResolvedValue(null)
+    getCidrVariance.mockResolvedValue(null)
     getTransportAttempts.mockResolvedValue([])
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
@@ -585,7 +590,7 @@ describe('DiscoveryPage', () => {
         correlation_id: null,
         result_state: 'discovered',
       })),
-      ...Array.from({ length: 245 }, (_, i) => ({
+      ...Array.from({ length: 225 }, (_, i) => ({
         result_id: `res-fail-${i}`,
         address: `192.168.40.${i + 10}`,
         hostname: null,
@@ -596,6 +601,22 @@ describe('DiscoveryPage', () => {
         selected_transport: null,
         failure_code: 'TRANSPORT_UNAVAILABLE',
         failure_message: 'TCP connection to device failed.',
+        started_at: '2026-08-19T10:00:00Z',
+        completed_at: '2026-08-19T10:00:01Z',
+        correlation_id: null,
+        result_state: 'unverified',
+      })),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        result_id: `res-unreachable-${i}`,
+        address: `192.168.41.${i + 1}`,
+        hostname: null,
+        vendor: null,
+        model: null,
+        platform: null,
+        state: 'failed',
+        selected_transport: null,
+        failure_code: 'CONNECTION_FAILED',
+        failure_message: 'Connection failed.',
         started_at: '2026-08-19T10:00:00Z',
         completed_at: '2026-08-19T10:00:01Z',
         correlation_id: null,
@@ -616,11 +637,50 @@ describe('DiscoveryPage', () => {
       finished_at: '2026-08-19T10:00:25Z',
       total_scanned: 254,
       total_discovered: 9,
-      total_unreachable: 245,
+      total_unreachable: 20,
       total_reachable_no_management: 0,
       total_authentication_failed: 0,
       total_partial_discovery: 0,
+      total_unverified: 225,
     })
+    getCidrVariance.mockResolvedValue({
+      summary: {
+        discovered: 9,
+        netbox: 28,
+        matched: 9,
+        variances: 19,
+        netbox_only: 19,
+        discovered_only: 0,
+        identity_mismatch: 0,
+        unverified: 225,
+      },
+      variances: {
+        netbox_only: Array.from({ length: 19 }, (_, i) => ({
+          address: `192.168.40.${i + 12}`,
+          name: `NetBox-Switch-${i + 1}`,
+          serial: `SERIAL-${i + 1}`,
+          model: 'WS-C2960X-24PS-L',
+          role: 'access switch',
+          status: 'active',
+        })),
+        discovered_only: [],
+        identity_mismatch: [],
+        unverified: [],
+      },
+    })
+    getTransportAttempts.mockResolvedValue([
+      {
+        attempt_id: 'attempt-1',
+        transport: 'ssh',
+        attempt_order: 1,
+        result: 'success',
+        failure_code: null,
+        duration_ms: 25,
+        started_at: '2026-08-19T10:00:00Z',
+        completed_at: '2026-08-19T10:00:01Z',
+        correlation_id: null,
+      },
+    ])
 
     render(
       <MemoryRouter>
@@ -643,10 +703,28 @@ describe('DiscoveryPage', () => {
           screen.getByText('254 addresses scanned'),
         ).toBeInTheDocument()
         expect(screen.getByText('Discovered: 9')).toBeInTheDocument()
-        expect(screen.getByText('Host unreachable: 245')).toBeInTheDocument()
+        expect(screen.getByText('Host unreachable: 20')).toBeInTheDocument()
+        expect(screen.getByText('NetBox')).toBeInTheDocument()
+        expect(screen.getByText('Matched')).toBeInTheDocument()
       },
       { timeout: 3000 },
     )
+    expect(screen.getAllByText('9', { selector: 'div' })).toHaveLength(2)
+    expect(screen.getByText('28', { selector: 'div' })).toBeInTheDocument()
+    expect(screen.getByText('19', { selector: 'div' })).toBeInTheDocument()
+    expect(screen.getByText('225', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText(/not network-tested because transport was unavailable/i)).toBeInTheDocument()
+    fireEvent.click(screen.getAllByText('—', { selector: 'summary' })[0])
+    await waitFor(() => {
+      expect(screen.getByText('1', { selector: 'summary' })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /show missing netbox devices/i }))
+    await waitFor(() => {
+      const varianceTable = screen.getAllByRole('table')[0]
+      expect(within(varianceTable).getAllByRole('row')).toHaveLength(20)
+      expect(within(varianceTable).getByText('NetBox-Switch-1')).toBeInTheDocument()
+      expect(within(varianceTable).queryByText('Switch-1')).not.toBeInTheDocument()
+    })
   })
 
   it('allows selecting another credential profile for an existing target and saving changes', async () => {

@@ -97,6 +97,10 @@ export interface VarianceItem {
   expected_name?: string | null
   observed_name?: string | null
   reason?: string | null
+  serial?: string | null
+  model?: string | null
+  role?: string | null
+  status?: string | null
 }
 
 export interface CidrVarianceCounts {
