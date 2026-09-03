@@ -70,6 +70,7 @@ from backend.app.transports.secret_provider import build_secret_provider
 from backend.app.transports.snmp.pysnmp import PySnmpTransport
 from backend.app.transports.ssh.netmiko import NetmikoSSHTransport
 from backend.app.transports.ssh.paramiko import ParamikoSSHTransport
+from backend.app.transports.telnet import TelnetTransport
 
 
 class _InMemorySnapshotRepository:
@@ -159,6 +160,7 @@ def _build_runtime_services(
     for transport in (
         NetmikoSSHTransport(),
         ParamikoSSHTransport(),
+        TelnetTransport(),
         PySnmpTransport(),
         HttpxTransport(),
     ):

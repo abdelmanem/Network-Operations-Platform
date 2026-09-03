@@ -61,5 +61,8 @@ class BaseCollector(ABC):
             capabilities=self.capabilities,
             run_id=discovery_context.run_id,
             discovered_at=discovery_context.started_at,
-            metadata=dict(discovery_context.metadata),
+            metadata={
+                **dict(discovery_context.target.metadata),
+                **dict(discovery_context.metadata),
+            },
         )

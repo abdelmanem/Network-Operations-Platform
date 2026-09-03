@@ -19,7 +19,11 @@ CATALYST_2960 = CiscoPlatformDefinition(
         model_names=("WS-C2960-24TT-L", "WS-C2960-48TT-L"),
         product_ids=("WS-C2960-24TT-L", "WS-C2960-48TT-L"),
         transport_support=frozenset(
-            {TransportCapability.SSH, TransportCapability.SNMP}
+            {
+                TransportCapability.SSH,
+                TransportCapability.SNMP,
+                TransportCapability.TELNET,
+            }
         ),
         parser_family="ios",
         firmware_family="ios",

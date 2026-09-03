@@ -11,6 +11,8 @@ from backend.app.collectors.cisco import (
 from backend.app.collectors.context import CollectorContext
 from backend.app.discovery.capabilities import CollectorCapability
 from backend.app.discovery.context import DiscoveryTarget
+from backend.app.discovery.contracts import DiscoveryTransportPolicy
+from backend.app.discovery.transport_policy import MultiTransportPolicy
 from backend.app.transports.base import (
     BaseTransport,
     TransportCapability,
@@ -18,6 +20,7 @@ from backend.app.transports.base import (
 )
 from backend.app.transports.manager import TransportManager
 from backend.app.transports.session import TransportSession
+from backend.app.transports.telnet import TelnetTransport
 
 
 @dataclass(slots=True, kw_only=True)
@@ -62,6 +65,64 @@ class FakeHTTPTransport(BaseTransport):
 
     def close(self) -> None:
         return None
+
+
+class FakeTelnetTransport(TelnetTransport):
+    """Registered Telnet transport used to verify explicit selector choice."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
+def test_catalyst_2960_advertises_ssh_snmp_and_telnet() -> None:
+    from backend.app.vendors.cisco.models.ios import CATALYST_2960
+
+    assert CATALYST_2960.metadata.transport_support == frozenset(
+        {
+            TransportCapability.SSH,
+            TransportCapability.SNMP,
+            TransportCapability.TELNET,
+        }
+    )
+
+
+def test_catalyst_2960_explicit_telnet_selects_registered_telnet_transport() -> None:
+    from backend.app.collectors.cisco.base import CiscoTransportSelector
+
+    manager = TransportManager()
+    manager.register(
+        FakeSSHTransport(FakeCommandSession(session_id="ssh", commands={}, executed=[]))
+    )
+    manager.register(FakeTelnetTransport())
+    selector = CiscoTransportSelector(manager)
+    from backend.app.vendors.cisco.models.ios import CATALYST_2960
+
+    selection = selector.select(CATALYST_2960, preferred_transport_name="telnet")
+
+    assert selection.capability == TransportCapability.TELNET
+    assert selection.transport_name == "telnet"
+    assert manager.resolve(selection.transport_name).name == "telnet"
+
+
+def test_telnet_policy_still_requires_explicit_insecure_opt_in() -> None:
+    with pytest.raises(ValueError, match="Telnet"):
+        DiscoveryTransportPolicy(
+            preferred=TransportCapability.TELNET,
+        ).ordered()
+
+    policy = MultiTransportPolicy.from_credential_profile(
+        type(
+            "Profile",
+            (),
+            {
+                "id": "profile-1",
+                "transport_types": ["telnet"],
+                "credential_type": "telnet_password",
+            },
+        )(),
+        allow_insecure=True,
+    )
+    assert policy.transport_names == ["telnet"]
 
 
 def test_factory_registers_supported_cisco_inventory_collectors() -> None:

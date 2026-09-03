@@ -30,6 +30,12 @@ from backend.app.discovery.result_states import (
     classify_transport_failure,
 )
 from backend.app.transports.base import TransportCapability
+from backend.app.transports.credentials import CredentialResolutionError
+from backend.app.transports.exceptions import (
+    TransportAuthenticationError,
+    TransportDependencyError,
+    TransportUnavailableError,
+)
 
 if TYPE_CHECKING:
     from backend.app.collectors.base import BaseCollector
@@ -484,6 +490,13 @@ class MultiTransportDiscoveryOrchestrator:
 
     def _classify_exception(self, exc: Exception) -> DiscoveryFailureCode:
         """Classify an exception into a DiscoveryFailureCode."""
+        if isinstance(exc, CredentialResolutionError):
+            return DiscoveryFailureCode.CREDENTIAL_RESOLUTION_FAILED
+        if isinstance(exc, TransportAuthenticationError):
+            return DiscoveryFailureCode.AUTHENTICATION_FAILED
+        if isinstance(exc, (TransportDependencyError, TransportUnavailableError)):
+            return DiscoveryFailureCode.TRANSPORT_UNAVAILABLE
+
         message = str(exc).lower()
         exc_type = type(exc).__name__.lower()
 

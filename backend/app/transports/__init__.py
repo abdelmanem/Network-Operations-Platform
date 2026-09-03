@@ -31,6 +31,7 @@ from backend.app.transports.ssh import (
     ParamikoSSHSession,
     ParamikoSSHTransport,
 )
+from backend.app.transports.telnet import TelnetSession, TelnetTransport
 from backend.app.transports.timeout import TransportTimeout
 
 __all__ = [
@@ -62,5 +63,7 @@ __all__ = [
     "ParamikoSSHTransport",
     "PySnmpSession",
     "PySnmpTransport",
+    "TelnetSession",
+    "TelnetTransport",
     "UsernamePasswordCredentials",
 ]

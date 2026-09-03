@@ -142,9 +142,9 @@ def classify_transport_failure(
     if failure_code == DiscoveryFailureCode.AUTHENTICATION_FAILED:
         return True, True, True, False
 
-    # Credential resolution failures are auth-related
+    # Credential resolution failures occur before device authentication.
     if failure_code == DiscoveryFailureCode.CREDENTIAL_RESOLUTION_FAILED:
-        return True, True, False, False
+        return True, False, False, False
 
     # Unsupported credential for this transport - host up, auth not attempted
     if failure_code == DiscoveryFailureCode.UNSUPPORTED_CREDENTIAL:

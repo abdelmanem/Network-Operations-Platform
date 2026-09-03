@@ -52,8 +52,13 @@ from backend.app.persistence.models import (
 )
 from backend.app.persistence.repositories import SnapshotRepository
 from backend.app.snapshot.mapper import SnapshotMapper
-from backend.app.transports.secret_errors import SecretProviderError
 from backend.app.transports.base import TransportCapability
+from backend.app.transports.credentials import CredentialResolutionError
+from backend.app.transports.exceptions import (
+    TransportDependencyError,
+    TransportUnavailableError,
+)
+from backend.app.transports.secret_errors import SecretProviderError
 
 
 @dataclass(frozen=True, slots=True)
@@ -1324,8 +1329,12 @@ class DiscoveryExecutionService:
     def _failure_code(exc: Exception) -> DiscoveryFailureCode:
         if isinstance(exc, DiscoveryExecutionFailureError):
             return exc.code
+        if isinstance(exc, CredentialResolutionError):
+            return DiscoveryFailureCode.CREDENTIAL_RESOLUTION_FAILED
         if isinstance(exc, SecretProviderError):
             return DiscoveryFailureCode.CREDENTIAL_RESOLUTION_FAILED
+        if isinstance(exc, (TransportDependencyError, TransportUnavailableError)):
+            return DiscoveryFailureCode.TRANSPORT_UNAVAILABLE
         if isinstance(exc, asyncio.TimeoutError | TimeoutError):
             return DiscoveryFailureCode.DISCOVERY_TIMEOUT
         if isinstance(exc, DiscoveryPersistenceError):

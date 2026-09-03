@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from backend.app.transports.base import BaseTransport, TransportCapability
+from backend.app.transports.exceptions import TransportUnavailableError
 
 TransportFactory = Callable[[], BaseTransport]
 
@@ -32,7 +33,7 @@ class TransportRegistry:
         try:
             return self._transports[name]
         except KeyError as exc:
-            raise KeyError(f"Unknown transport: {name}") from exc
+            raise TransportUnavailableError(f"Unknown transport: {name}") from exc
 
     def select(
         self, capabilities: frozenset[TransportCapability]
