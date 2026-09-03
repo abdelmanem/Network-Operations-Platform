@@ -72,6 +72,8 @@ from backend.app.schemas.discovery import (
     CidrVarianceCounts,
     CidrVarianceData,
     VarianceItem,
+    MatchedDeviceItem,
+    UnreachableItem,
 )
 
 if TYPE_CHECKING:
@@ -649,6 +651,19 @@ def get_cidr_variance(
     def snapshot_ip(value: str | None) -> str | None:
         return value.split("/", 1)[0] if value else None
 
+    def payload_text(payload: dict[str, Any], key: str) -> str | None:
+        value = payload.get(key)
+        return value if isinstance(value, str) and value else None
+
+    def payload_nested_text(
+        payload: dict[str, Any], parent: str, key: str
+    ) -> str | None:
+        value = payload.get(parent)
+        if isinstance(value, dict):
+            nested = value.get(key)
+            return nested if isinstance(nested, str) and nested else None
+        return None
+
     job = DiscoveryJobRepository(db_session).get(tenant_id=tenant_id, job_id=job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Discovery job was not found.")
@@ -707,6 +722,7 @@ def get_cidr_variance(
 
     discovered_by_ip = {}
     unverified_list = []
+    unreachable_list = []
 
     for r in discovery_results:
         res_state = "unverified" if r.failure_code == "TRANSPORT_UNAVAILABLE" and r.result_state == "reachable_no_management" else r.result_state
@@ -714,6 +730,13 @@ def get_cidr_variance(
             unverified_list.append(VarianceItem(
                 address=r.address,
                 reason=r.failure_message or "Transport unavailable"
+            ))
+        elif res_state == "unreachable":
+            unreachable_list.append(UnreachableItem(
+                address=r.address,
+                state=r.result_state,
+                failure_code=r.failure_code,
+                reason=r.failure_message,
             ))
         elif res_state in {"discovered", "partial_discovery"}:
             discovered_by_ip[r.address] = r
@@ -752,6 +775,7 @@ def get_cidr_variance(
     netbox_only = []
     discovered_only = []
     identity_mismatch = []
+    matched_details = []
 
     all_ips = set(netbox_by_ip.keys()) | set(discovered_by_ip.keys())
     for ip in all_ips:
@@ -759,7 +783,16 @@ def get_cidr_variance(
         observed_record = discovered_by_ip.get(ip)
 
         if expected and not observed_record:
-            netbox_only.append(VarianceItem(address=ip, expected_name=expected.name))
+            expected_payload = expected.payload if isinstance(expected.payload, dict) else {}
+            netbox_only.append(VarianceItem(
+                address=ip,
+                name=expected.name,
+                expected_name=expected.name,
+                serial=expected.serial_number,
+                model=expected.model,
+                role=payload_nested_text(expected_payload, "role", "name"),
+                status=payload_text(expected_payload, "status"),
+            ))
         elif observed_record and not expected:
             live_dev = live_devices_by_ip.get(ip)
             observed_name = live_dev.name if live_dev else observed_record.hostname
@@ -777,6 +810,22 @@ def get_cidr_variance(
             )
             if is_match:
                 matched.append(ip)
+                expected_payload = expected.payload if isinstance(expected.payload, dict) else {}
+                matched_details.append(MatchedDeviceItem(
+                    address=ip,
+                    discovered_name=observed_name,
+                    netbox_name=expected.name,
+                    identity_match_method=InventoryMatcher.identity_match_method(
+                        expected.name,
+                        expected.serial_number,
+                        observed_name,
+                        observed_serial,
+                    ),
+                    model=expected.model,
+                    serial=observed_serial or expected.serial_number,
+                    state=observed_record.result_state,
+                    status=payload_text(expected_payload, "status"),
+                ))
             else:
                 identity_mismatch.append(VarianceItem(
                     address=ip,
@@ -794,13 +843,27 @@ def get_cidr_variance(
             discovered_only=len(discovered_only),
             identity_mismatch=len(identity_mismatch),
             unverified=len(unverified_list),
+            unreachable=len(unreachable_list),
         ),
         variances=CidrVarianceData(
             netbox_only=netbox_only,
             discovered_only=discovered_only,
             identity_mismatch=identity_mismatch,
             unverified=unverified_list,
-        )
+            matched=matched_details,
+            unreachable=unreachable_list,
+        ),
+        target_identifier=target.identifier,
+        cidr=target.scope_cidr or target.address,
+        discovery_job_id=job.id,
+        discovery_status=job.state,
+        discovery_run_started_at=run.started_at,
+        netbox_snapshot_timestamp=(
+            netbox_snapshot.captured_at if netbox_snapshot is not None else None
+        ),
+        vendor=target.vendor,
+        platform=target.platform_hint,
+        unreachable=len(unreachable_list),
     )
 
 @router.get(

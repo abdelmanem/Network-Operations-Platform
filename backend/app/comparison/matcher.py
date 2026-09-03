@@ -109,11 +109,24 @@ class InventoryMatcher:
         observed_serial: str | None,
     ) -> bool:
         """Check if two sets of identity attributes canonically match."""
+        return cls.identity_match_method(
+            expected_name, expected_serial, observed_name, observed_serial
+        ) is not None
+
+    @classmethod
+    def identity_match_method(
+        cls,
+        expected_name: str | None,
+        expected_serial: str | None,
+        observed_name: str | None,
+        observed_serial: str | None,
+    ) -> str | None:
+        """Return the canonical identity attribute that matched, if any."""
         if expected_name and observed_name and cls._normalize(expected_name) == cls._normalize(observed_name):
-            return True
+            return "name"
         if expected_serial and observed_serial and cls._normalize(expected_serial) == cls._normalize(observed_serial):
-            return True
-        return False
+            return "serial"
+        return None
 
     @staticmethod
     def _normalize(value: str | None) -> str:

@@ -212,8 +212,8 @@ def test_get_cidr_variance_api() -> None:
                 schema_version="1",
                 payload={},
                 devices=[
-                    SnapshotDeviceRecord(device_id="dev1", name="sw-01", management_ip="192.168.40.10", serial_number="SN001", payload={}),
-                    SnapshotDeviceRecord(device_id="dev2", name="sw-02", management_ip="192.168.40.20", serial_number="SN002", payload={})
+                    SnapshotDeviceRecord(device_id="dev1", name="sw-01", management_ip="192.168.40.10", serial_number="SN001", payload={"role": {"name": "core switch"}, "status": "active"}),
+                    SnapshotDeviceRecord(device_id="dev2", name="sw-02", management_ip="192.168.40.20", serial_number="SN002", payload={"role": {"name": "access switch"}, "status": "active"})
                 ]
             ),
             DiscoveryDeviceResultRecord(
@@ -270,6 +270,16 @@ def test_get_cidr_variance_api() -> None:
         assert result.summary.netbox_only == 1
         assert result.summary.discovered_only == 1
         assert result.summary.unverified == 1
+        assert result.summary.unreachable == 0
+        assert result.target_identifier == "test-cidr"
+        assert result.cidr == "192.168.40.0/24"
+        assert result.netbox_snapshot_timestamp.replace(tzinfo=UTC) == datetime(2024, 1, 1, 11, 0, tzinfo=UTC)
+        assert len(result.variances.matched) == 1
+        assert result.variances.matched[0].identity_match_method == "name"
+        assert result.variances.netbox_only[0].serial == "SN002"
+        assert result.variances.netbox_only[0].role == "access switch"
+        assert result.variances.netbox_only[0].status == "active"
+        assert result.variances.unreachable == []
 
         assert result.variances.netbox_only[0].address == "192.168.40.20"
         assert result.variances.discovered_only[0].address == "192.168.40.30"

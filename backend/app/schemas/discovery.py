@@ -478,6 +478,28 @@ class VarianceItem(BaseModel):
     expected_name: str | None = None
     observed_name: str | None = None
     reason: str | None = None
+    serial: str | None = None
+    model: str | None = None
+    role: str | None = None
+    status: str | None = None
+
+
+class MatchedDeviceItem(BaseModel):
+    address: str
+    discovered_name: str | None = None
+    netbox_name: str | None = None
+    identity_match_method: str | None = None
+    model: str | None = None
+    serial: str | None = None
+    state: str | None = None
+    status: str | None = None
+
+
+class UnreachableItem(BaseModel):
+    address: str
+    state: str | None = None
+    failure_code: str | None = None
+    reason: str | None = None
 
 
 class CidrVarianceCounts(BaseModel):
@@ -489,6 +511,7 @@ class CidrVarianceCounts(BaseModel):
     discovered_only: int
     identity_mismatch: int
     unverified: int
+    unreachable: int = 0
 
 
 class CidrVarianceData(BaseModel):
@@ -496,9 +519,20 @@ class CidrVarianceData(BaseModel):
     discovered_only: list[VarianceItem]
     identity_mismatch: list[VarianceItem]
     unverified: list[VarianceItem]
+    matched: list[MatchedDeviceItem] = Field(default_factory=list)
+    unreachable: list[UnreachableItem] = Field(default_factory=list)
 
 
 class CidrVarianceSummaryResponse(BaseModel):
     """Variance summary between discovered results and NetBox inside a CIDR."""
     summary: CidrVarianceCounts
     variances: CidrVarianceData
+    target_identifier: str | None = None
+    cidr: str | None = None
+    discovery_job_id: UUID | None = None
+    discovery_status: str | None = None
+    discovery_run_started_at: datetime | None = None
+    netbox_snapshot_timestamp: datetime | None = None
+    vendor: str | None = None
+    platform: str | None = None
+    unreachable: int = 0

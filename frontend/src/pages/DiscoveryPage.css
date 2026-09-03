@@ -1434,6 +1434,18 @@
   background: rgba(153, 27, 27, 0.12);
 }
 
+.discovery-success-banner {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #bbf7d0;
+  border-left-width: 3px;
+  border-radius: 9px;
+  background: var(--discovery-success-bg);
+  color: var(--discovery-success);
+  font-size: 13px;
+  animation: discovery-banner-in 200ms var(--discovery-ease);
+}
+
 /* Empty detail */
 
 .discovery-target-empty {

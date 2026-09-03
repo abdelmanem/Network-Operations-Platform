@@ -112,6 +112,7 @@ export interface CidrVarianceCounts {
   discovered_only: number
   identity_mismatch: number
   unverified: number
+  unreachable: number
 }
 
 export interface CidrVarianceData {
@@ -119,11 +120,40 @@ export interface CidrVarianceData {
   discovered_only: VarianceItem[]
   identity_mismatch: VarianceItem[]
   unverified: VarianceItem[]
+  matched: MatchedDeviceItem[]
+  unreachable: UnreachableItem[]
+}
+
+export interface MatchedDeviceItem {
+  address: string
+  discovered_name?: string | null
+  netbox_name?: string | null
+  identity_match_method?: string | null
+  model?: string | null
+  serial?: string | null
+  state?: string | null
+  status?: string | null
+}
+
+export interface UnreachableItem {
+  address: string
+  state?: string | null
+  failure_code?: string | null
+  reason?: string | null
 }
 
 export interface CidrVarianceSummaryResponse {
   summary: CidrVarianceCounts
   variances: CidrVarianceData
+  target_identifier?: string | null
+  cidr?: string | null
+  discovery_job_id?: string | null
+  discovery_status?: string | null
+  discovery_run_started_at?: string | null
+  netbox_snapshot_timestamp?: string | null
+  vendor?: string | null
+  platform?: string | null
+  unreachable: number
 }
 
 export interface DiscoveryJobRequest {

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { EmptyState } from '../components/dashboard/EmptyState'
 import { ErrorState } from '../components/dashboard/ErrorState'
 import { KpiCard } from '../components/dashboard/KpiCard'
 import { compareDevice } from '../api/devices'
+import { getDiscoveryCidrVariance } from '../api/discovery'
 import {
   listLiveInventory,
   listNetboxInventory,
@@ -22,6 +23,7 @@ import type {
   NeighborListResponse,
   SnapshotResponse,
   VlanListResponse,
+  CidrVarianceSummaryResponse,
 } from '../types/api'
 import './NetworkPage.css'
 
@@ -37,6 +39,23 @@ interface LoadState {
   error?: string
 }
 
+function ReportTable({
+  headers,
+  rows,
+}: {
+  headers: string[]
+  rows: string[][]
+}) {
+  return (
+    <div className="network-table-wrap">
+      <table className="network-table">
+        <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
+        <tbody>{rows.map((row, index) => <tr key={`${row[0]}-${index}`}>{row.map((value, valueIndex) => <td key={`${value}-${valueIndex}`}>{value}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+  )
+}
+
 // Used only by the Variance Report so structural gaps (missing/unexpected
 // devices) are computed against the FULL inventory on each side, never
 // against whatever page or search/filter happens to be active on the
@@ -44,8 +63,6 @@ interface LoadState {
 // on one side, the durable fix is a dedicated backend diff/reconciliation
 // endpoint rather than pulling everything client-side — flag it if that
 // ever becomes a real ceiling.
-const FULL_INVENTORY_PAGE_SIZE = 5000
-
 export function NetworkPage() {
   // Main state
   const [currentSection, setCurrentSection] = useState<PageSection>('overview')
@@ -74,15 +91,20 @@ export function NetworkPage() {
     direction: SortDirection
   }>({ key: 'name', direction: 'asc' })
 
-  // Variance report data — full, unfiltered NetBox + Live inventories,
-  // loaded on demand only when the report is opened (see loadVarianceReport).
+  const [searchParams] = useSearchParams()
+  const discoveryJobId = searchParams.get('discovery_job_id')
+  const discoveryRunId = searchParams.get('discovery_run_id')
+
+  // Variance report data comes from the authoritative CIDR variance endpoint.
   const [varianceReportState, setVarianceReportState] = useState<LoadState>({
-    state: 'loading',
+    state: 'empty',
   })
-  const [varianceNetboxFull, setVarianceNetboxFull] =
-    useState<InventoryListResponse | null>(null)
-  const [varianceLiveFull, setVarianceLiveFull] =
-    useState<InventoryListResponse | null>(null)
+  const [varianceReport, setVarianceReport] =
+    useState<CidrVarianceSummaryResponse | null>(null)
+  const [varianceCategory, setVarianceCategory] = useState<
+    'all' | 'netbox_only' | 'discovered_only' | 'identity_mismatch' | 'matched'
+  >('all')
+  const [varianceSearch, setVarianceSearch] = useState('')
 
   // Comparison data
   const [comparison, setComparison] = useState<DeviceComparisonResponse | null>(
@@ -168,19 +190,10 @@ export function NetworkPage() {
     }
   }, [liveQuery])
 
-  // Load the complete, unfiltered inventories for the variance report.
-  // Deliberately independent of netboxQuery/liveQuery and only triggered
-  // from the "View Variance Report" action — see the note on
-  // FULL_INVENTORY_PAGE_SIZE above for why this isn't a page-1-only call.
-  const loadVarianceReport = useCallback(async () => {
+  const loadVarianceReport = useCallback(async (jobId: string) => {
     setVarianceReportState({ state: 'loading' })
     try {
-      const [netbox, live] = await Promise.all([
-        listNetboxInventory(1, FULL_INVENTORY_PAGE_SIZE, {}),
-        listLiveInventory(1, FULL_INVENTORY_PAGE_SIZE, {}),
-      ])
-      setVarianceNetboxFull(netbox)
-      setVarianceLiveFull(live)
+      setVarianceReport(await getDiscoveryCidrVariance(jobId))
       setVarianceReportState({ state: 'ready' })
     } catch (err) {
       setVarianceReportState({
@@ -192,6 +205,13 @@ export function NetworkPage() {
       })
     }
   }, [])
+
+  useEffect(() => {
+    if (discoveryJobId) {
+      setCurrentSection('variance')
+      void loadVarianceReport(discoveryJobId)
+    }
+  }, [discoveryJobId, loadVarianceReport])
 
   // Load device comparison
   const loadComparison = useCallback(async (deviceId: string) => {
@@ -283,34 +303,6 @@ export function NetworkPage() {
     }
   }, [netboxInventory, liveInventory])
 
-  // Structural variance between the FULL netbox/live inventories — this is
-  // the data source for the Variance Report, and is intentionally separate
-  // from varianceSummary above (which reflects whatever page/search/filter
-  // is active on the browsing views and can under- or over-count on any
-  // site with more devices than one page).
-  const varianceReport = useMemo(() => {
-    if (!varianceNetboxFull || !varianceLiveFull) return null
-
-    const liveById = new Map(
-      varianceLiveFull.items.map((device) => [device.device_id, device]),
-    )
-    const netboxById = new Map(
-      varianceNetboxFull.items.map((device) => [device.device_id, device]),
-    )
-
-    const missingDevices = varianceNetboxFull.items.filter(
-      (device) => !liveById.has(device.device_id),
-    )
-    const unexpectedDevices = varianceLiveFull.items.filter(
-      (device) => !netboxById.has(device.device_id),
-    )
-    const matchedCount = varianceNetboxFull.items.filter((device) =>
-      liveById.has(device.device_id),
-    ).length
-
-    return { missingDevices, unexpectedDevices, matchedCount }
-  }, [varianceNetboxFull, varianceLiveFull])
-
   // Handle device selection from inventory
   const handleSelectDevice = (deviceId: string) => {
     void loadComparison(deviceId)
@@ -318,11 +310,11 @@ export function NetworkPage() {
 
   const openVarianceReport = () => {
     setCurrentSection('variance')
-    void loadVarianceReport()
+    if (discoveryJobId) void loadVarianceReport(discoveryJobId)
   }
 
   // Format timestamp for display
-  const formatTimestamp = (ts: string | null) => {
+  const formatTimestamp = (ts: string | null | undefined) => {
     if (!ts) return 'Unknown'
     try {
       return new Date(ts).toLocaleString()
@@ -846,6 +838,15 @@ export function NetworkPage() {
   // sides rather than whatever page/search/filter is active elsewhere.
   // =========================================================================
   const renderVarianceReport = () => {
+    if (!discoveryJobId) {
+      return (
+        <div className="card">
+          <h2>Network Variance Report</h2>
+          <p className="muted">Open this report from a completed CIDR discovery job.</p>
+          <Link to="/discovery" className="network-link">Back to Discovery</Link>
+        </div>
+      )
+    }
     if (varianceReportState.state === 'loading' || !varianceReport) {
       return (
         <EmptyState
@@ -861,137 +862,86 @@ export function NetworkPage() {
           message={
             varianceReportState.error || 'Failed to load the variance report'
           }
-          onRetry={() => void loadVarianceReport()}
+          onRetry={() => {
+            if (discoveryJobId) void loadVarianceReport(discoveryJobId)
+          }}
         />
       )
     }
 
-    const { missingDevices, unexpectedDevices, matchedCount } = varianceReport
+    const { summary, variances } = varianceReport
+    const categoryItems = varianceCategory === 'all'
+      ? [...variances.netbox_only, ...variances.discovered_only, ...variances.identity_mismatch]
+      : varianceCategory === 'netbox_only'
+        ? variances.netbox_only
+      : varianceCategory === 'discovered_only'
+        ? variances.discovered_only
+        : varianceCategory === 'identity_mismatch'
+          ? variances.identity_mismatch
+          : []
+    const filteredItems = categoryItems.filter((item) =>
+      [item.address, item.name, item.expected_name, item.observed_name, item.serial, item.model]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(varianceSearch.toLowerCase())),
+    )
 
     return (
       <div className="card">
         <h2>Network Variance Report</h2>
         <p className="muted">
-          Every device that differs by identity between the complete NetBox
-          inventory and the complete live-discovered inventory — independent
-          of any search or filter set on the Expected/Live pages.
+          Target: {varianceReport.target_identifier || '—'} · CIDR: {varianceReport.cidr || '—'} · Job: {varianceReport.discovery_job_id || discoveryJobId} · Run: {discoveryRunId || '—'}
+        </p>
+        <p className="muted">
+          Status: {varianceReport.discovery_status || '—'} · Run: {formatTimestamp(varianceReport.discovery_run_started_at)} · NetBox snapshot: {formatTimestamp(varianceReport.netbox_snapshot_timestamp)} · Vendor: {varianceReport.vendor || '—'} · Platform: {varianceReport.platform || '—'}
+        </p>
+        <p className="network-variance-note">
+          Confirmed Variances are inventory differences. Unverified addresses were not network-tested and are not considered missing devices.
         </p>
 
         <div className="network-variance-summary">
           <div className="network-variance-summary-item network-variance-summary-missing">
-            <span>Missing from live</span>
-            <strong>{missingDevices.length}</strong>
+            <span>Discovered</span>
+            <strong>{summary.discovered}</strong>
           </div>
           <div className="network-variance-summary-item network-variance-summary-unexpected">
-            <span>Unexpected in live</span>
-            <strong>{unexpectedDevices.length}</strong>
+            <span>NetBox</span>
+            <strong>{summary.netbox}</strong>
           </div>
           <div className="network-variance-summary-item network-variance-summary-matched">
-            <span>Matching device identity</span>
-            <strong>{matchedCount}</strong>
+            <span>Matched</span>
+            <strong>{summary.matched}</strong>
+          </div>
+          <div className="network-variance-summary-item network-variance-summary-missing">
+            <span>Confirmed Variances</span>
+            <strong>{summary.variances}</strong>
           </div>
         </div>
 
         <div className="network-variance-report-section">
-          <h3>Missing from live discovery ({missingDevices.length})</h3>
-          <p className="muted">
-            In NetBox but not seen by the last discovery run — could mean the
-            device is offline, unreachable, or decommissioned but not yet
-            removed from NetBox.
-          </p>
-          {missingDevices.length === 0 ? (
-            <p className="network-diff-empty">
-              None — every NetBox device was discovered.
-            </p>
+          <div className="network-table-controls">
+            <input type="search" aria-label="Search variance records" placeholder="Search IP, name, or serial" value={varianceSearch} onChange={(event) => setVarianceSearch(event.target.value)} />
+          </div>
+          <div className="network-actions">
+            {(['all', 'netbox_only', 'discovered_only', 'identity_mismatch', 'matched'] as const).map((category) => (
+              <button type="button" key={category} className="btn btn-outline" onClick={() => setVarianceCategory(category)}>{category === 'all' ? 'All Variances' : category === 'netbox_only' ? 'NetBox Only' : category === 'discovered_only' ? 'Discovered Only' : category === 'identity_mismatch' ? 'Identity Mismatch' : 'Matched'}</button>
+            ))}
+          </div>
+          {varianceCategory === 'matched' ? (
+            <ReportTable headers={['Address', 'Discovered', 'NetBox', 'Match method', 'Model', 'Serial', 'Status']} rows={variances.matched.filter((item) => [item.address, item.discovered_name, item.netbox_name, item.serial].filter(Boolean).some((value) => value!.toLowerCase().includes(varianceSearch.toLowerCase()))).map((item) => [item.address, item.discovered_name || '—', item.netbox_name || '—', item.identity_match_method || '—', item.model || '—', item.serial || '—', item.status || item.state || '—'])} />
+          ) : filteredItems.length === 0 ? (
+            <p className="network-diff-empty">No records in this category.</p>
           ) : (
-            <div className="network-table-wrap">
-              <table className="network-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Model</th>
-                    <th>Platform</th>
-                    <th>Management IP</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {missingDevices.map((device) => (
-                    <tr key={device.device_id}>
-                      <td>{device.name || device.device_id}</td>
-                      <td>{device.model || '—'}</td>
-                      <td>{device.platform || '—'}</td>
-                      <td>{device.management_ip || '—'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="network-table-action-btn"
-                          onClick={() => handleSelectDevice(device.device_id)}
-                        >
-                          Compare
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ReportTable headers={['Address', 'NetBox Name', 'Serial', 'Model', 'Role', 'Status']} rows={filteredItems.map((item) => [item.address, item.name || item.expected_name || item.observed_name || '—', item.serial || '—', item.model || '—', item.role || '—', item.status || '—'])} />
           )}
         </div>
 
         <div className="network-variance-report-section">
-          <h3>Unexpected in live discovery ({unexpectedDevices.length})</h3>
-          <p className="muted">
-            Seen by discovery but not present in NetBox — could mean a new or
-            unregistered device on the network.
-          </p>
-          {unexpectedDevices.length === 0 ? (
-            <p className="network-diff-empty">
-              None — every discovered device is registered in NetBox.
-            </p>
-          ) : (
-            <div className="network-table-wrap">
-              <table className="network-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Model</th>
-                    <th>Platform</th>
-                    <th>Management IP</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unexpectedDevices.map((device) => (
-                    <tr key={device.device_id}>
-                      <td>{device.name || device.device_id}</td>
-                      <td>{device.model || '—'}</td>
-                      <td>{device.platform || '—'}</td>
-                      <td>{device.management_ip || '—'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="network-table-action-btn"
-                          onClick={() => handleSelectDevice(device.device_id)}
-                        >
-                          Compare
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <h3>Operational results</h3>
+          <p>Unverified: {summary.unverified}. Unverified ≠ Missing. These addresses were not network-tested because management transport was unavailable.</p>
+          <ReportTable headers={['Unverified address', 'Reason']} rows={variances.unverified.map((item) => [item.address, item.reason || 'Management transport unavailable'])} />
+          <p>Unreachable: {varianceReport.unreachable}. An actual connection failure was observed.</p>
+          <ReportTable headers={['Unreachable address', 'State', 'Failure', 'Reason']} rows={variances.unreachable.map((item) => [item.address, item.state || '—', item.failure_code || '—', item.reason || '—'])} />
         </div>
-
-        <p className="network-variance-note muted">
-          {matchedCount} device{matchedCount === 1 ? '' : 's'} exist in both
-          inventories by ID. This report flags identity-level gaps only —
-          it doesn't yet check whether a matched device's fields (IP, model,
-          platform…) have drifted. Open a device from Expected or Live
-          inventory and click Compare to check that.
-        </p>
 
         <div className="network-back">
           <button
@@ -1002,6 +952,7 @@ export function NetworkPage() {
             ← Back to Overview
           </button>
         </div>
+        <Link to="/discovery" className="network-link">Back to Discovery</Link>
       </div>
     )
   }

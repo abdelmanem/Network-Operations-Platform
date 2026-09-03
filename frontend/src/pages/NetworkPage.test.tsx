@@ -1,10 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { listNetboxInventory, listLiveInventory } = vi.hoisted(() => ({
   listNetboxInventory: vi.fn(),
   listLiveInventory: vi.fn(),
+}))
+
+const { getDiscoveryCidrVariance } = vi.hoisted(() => ({
+  getDiscoveryCidrVariance: vi.fn(),
 }))
 
 const { compareDevice } = vi.hoisted(() => ({
@@ -24,6 +28,10 @@ vi.mock('../api/inventory', () => ({
   listLiveInventory,
 }))
 
+vi.mock('../api/discovery', () => ({
+  getDiscoveryCidrVariance,
+}))
+
 vi.mock('../api/devices', () => ({
   compareDevice,
 }))
@@ -41,11 +49,52 @@ describe('NetworkPage', () => {
   beforeEach(() => {
     listNetboxInventory.mockReset()
     listLiveInventory.mockReset()
+    getDiscoveryCidrVariance.mockReset()
     compareDevice.mockReset()
     getSnapshot.mockReset()
     listDeviceInterfaces.mockReset()
     listDeviceVlans.mockReset()
     listDeviceNeighbors.mockReset()
+    getDiscoveryCidrVariance.mockResolvedValue(null)
+  })
+
+  it('renders the authoritative CIDR report for the discovery job context', async () => {
+    listNetboxInventory.mockResolvedValue({ items: [], page: 1, page_size: 50, total: 0, has_next: false, source: 'netbox', snapshot_id: null, snapshot_captured_at: null, device_count: 0 })
+    listLiveInventory.mockResolvedValue({ items: [], page: 1, page_size: 50, total: 0, has_next: false, source: 'live', snapshot_id: null, snapshot_captured_at: null, device_count: 0 })
+    getDiscoveryCidrVariance.mockResolvedValue({
+      target_identifier: 'Cisco_SW_CIDR40',
+      cidr: '192.168.40.0/24',
+      discovery_job_id: '41e51ee2-eed8-4425-a4c3-0807b752cee1',
+      discovery_status: 'succeeded',
+      discovery_run_started_at: '2026-09-02T15:55:42Z',
+      netbox_snapshot_timestamp: '2026-09-02T13:05:13Z',
+      vendor: 'Cisco',
+      platform: 'cisco-ios',
+      unreachable: 20,
+      summary: { discovered: 9, netbox: 28, matched: 9, variances: 19, netbox_only: 19, discovered_only: 0, identity_mismatch: 0, unverified: 225 },
+      variances: {
+        netbox_only: Array.from({ length: 19 }, (_, index) => ({ address: `192.168.40.${index + 12}`, name: `NetBox-${index + 1}`, serial: `SERIAL-${index + 1}`, model: 'WS-C2960X-24PS-L', role: 'access switch', status: 'active' })),
+        discovered_only: [],
+        identity_mismatch: [],
+        unverified: Array.from({ length: 225 }, (_, index) => ({ address: `192.168.41.${index + 1}`, reason: 'Management transport unavailable' })),
+        matched: Array.from({ length: 9 }, (_, index) => ({ address: `192.168.40.${index + 1}`, discovered_name: `Switch-${index + 1}`, netbox_name: `Switch-${index + 1}`, identity_match_method: 'name', model: 'WS-C2960X-24PS-L', serial: `MATCH-${index + 1}`, status: 'active' })),
+        unreachable: Array.from({ length: 20 }, (_, index) => ({ address: `192.168.42.${index + 1}`, state: 'unreachable', failure_code: 'CONNECTION_FAILED', reason: 'Connection failed' })),
+      },
+    })
+
+    render(<MemoryRouter initialEntries={['/network?discovery_job_id=41e51ee2-eed8-4425-a4c3-0807b752cee1&discovery_run_id=run-1']}><NetworkPage /></MemoryRouter>)
+
+    await waitFor(() => expect(getDiscoveryCidrVariance).toHaveBeenCalledWith('41e51ee2-eed8-4425-a4c3-0807b752cee1'))
+    expect(await screen.findByText(/Cisco_SW_CIDR40/)).toBeInTheDocument()
+    expect(screen.getByText('Confirmed Variances')).toBeInTheDocument()
+    expect(screen.getByText('NetBox-1')).toBeInTheDocument()
+    expect(screen.getByText(/Unverified: 225/)).toBeInTheDocument()
+    expect(screen.getByText(/Unreachable: 20/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'NetBox Only' }))
+    expect(within(screen.getAllByRole('table')[0]).getAllByRole('row')).toHaveLength(20)
+    fireEvent.change(screen.getByRole('searchbox', { name: /search variance records/i }), { target: { value: 'NetBox-19' } })
+    expect(screen.getByText('NetBox-19')).toBeInTheDocument()
   })
 
   // ==========================================================================

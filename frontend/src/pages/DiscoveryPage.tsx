@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   createDiscoveryApiJob,
   createDiscoveryCredentialProfile,
@@ -61,7 +61,7 @@ const credentialTypeHelp: Record<
     label: 'SSH password',
     summary:
       'Username and password authentication over SSH. The secret is resolved only at execution time.',
-    transport_types: ['ssh'],
+    transport_types: ['ssh', 'telnet', 'http', 'https'],
   },
   ssh_key: {
     label: 'SSH key',
@@ -743,12 +743,21 @@ function SelectedTargetPanel({
               className="discovery-btn discovery-btn-secondary"
               onClick={() => onManageProfiles()}
             >
-              Create credential profile
+              + Create Credential Profile
             </button>
           </div>
         ) : (
           <div className="discovery-credential-section">
-            <h3>Credential profile</h3>
+            <div className="discovery-credential-section-header">
+              <h3>Credential profile</h3>
+              <button
+                type="button"
+                className="discovery-btn discovery-btn-secondary discovery-btn-compact"
+                onClick={() => onManageProfiles()}
+              >
+                + Create Credential Profile
+              </button>
+            </div>
             <div className="discovery-credential-select">
               <label htmlFor="preview-credential-profile">
                 Credential profile
@@ -901,8 +910,17 @@ function SelectedTargetPanel({
         </div>
       </div>
 
-      <div className="discovery-credential-section">
-        <h3>Credential profile</h3>
+          <div className="discovery-credential-section">
+            <div className="discovery-credential-section-header">
+              <h3>Credential profile</h3>
+              <button
+                type="button"
+                className="discovery-btn discovery-btn-secondary discovery-btn-compact"
+                onClick={() => onManageProfiles()}
+              >
+                + Create Credential Profile
+              </button>
+            </div>
 
         {profiles.length === 0 ? (
           <>
@@ -912,7 +930,7 @@ function SelectedTargetPanel({
               className="discovery-btn discovery-btn-secondary"
               onClick={() => onManageProfiles()}
             >
-              Create credential profile
+              + Create Credential Profile
             </button>
           </>
         ) : (
@@ -1237,6 +1255,7 @@ function resultBadgeLabel(result: DiscoveryDeviceResultResponse) {
 }
 
 function CidrVarianceSummary({ jobId }: { jobId: string }) {
+  const navigate = useNavigate()
   const [variance, setVariance] = useState<CidrVarianceSummaryResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1358,6 +1377,13 @@ function CidrVarianceSummary({ jobId }: { jobId: string }) {
           )}
         </div>
       )}
+      <button
+        type="button"
+        className="discovery-btn discovery-btn-primary"
+        onClick={() => navigate(`/network?discovery_job_id=${encodeURIComponent(jobId)}`)}
+      >
+        View Variance Report →
+      </button>
     </div>
   )
 }
@@ -1758,7 +1784,7 @@ function AddTargetModal({
                     className="discovery-btn discovery-btn-secondary"
                     onClick={onCreateProfile}
                   >
-                    Create credential profile
+                    + Create Credential Profile
                   </button>
                 </>
               ) : (
@@ -1950,12 +1976,14 @@ function CredentialProfileModal({
                 Credential type
                 <select
                   value={form.credential_type}
+                  required
                   onChange={(event) => {
                     const next = event.target.value
                     onChange({
                       credential_type: next,
-                      transport_types: credentialTypeHelp[next]
-                        ?.transport_types || ['ssh'],
+                      transport_types: [
+                        credentialTypeHelp[next]?.transport_types[0] || 'ssh',
+                      ],
                     })
                   }}
                 >
@@ -2103,6 +2131,7 @@ export function DiscoveryPage() {
   const [testingCredential, setTestingCredential] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
   const [showAddTargetModal, setShowAddTargetModal] = useState(false)
   const [showProfileComposer, setShowProfileComposer] = useState(false)
   const [profileComposerMode, setProfileComposerMode] = useState<'create' | 'edit'>('create')
@@ -2356,6 +2385,7 @@ export function DiscoveryPage() {
     setProfileComposerMode(mode)
     setProfileComposerProfileId(profileId || '')
     setShowProfileComposer(true)
+    setProfileSuccess(null)
 
     if (!profileId) {
       console.log('[DiscoveryPage] No profileId, setting empty form for CREATE mode')
@@ -2518,6 +2548,7 @@ export function DiscoveryPage() {
     event.preventDefault()
     setCreatingProfile(true)
     setError(null)
+    setProfileSuccess(null)
 
     try {
       const payload = {
@@ -2531,8 +2562,8 @@ export function DiscoveryPage() {
         provider_reference: profileForm.provider_reference.trim(),
       }
 
-      if (!payload.name || !payload.provider_reference) {
-        throw new Error('Profile name and secret reference are required.')
+      if (!payload.name || !payload.vendor || !payload.platform || !payload.credential_type) {
+        throw new Error('Profile name, vendor, platform, and credential type are required.')
       }
 
       const requiresUsername =
@@ -2575,6 +2606,7 @@ export function DiscoveryPage() {
           provider_reference: '',
         })
         setShowProfileComposer(false)
+        setProfileSuccess('Credential profile updated successfully.')
         return updated
       }
 
@@ -2601,6 +2633,7 @@ export function DiscoveryPage() {
       })
 
       setShowProfileComposer(false)
+      setProfileSuccess('Credential profile created successfully.')
     } catch (err) {
       setError(
         err instanceof Error
@@ -2744,6 +2777,12 @@ export function DiscoveryPage() {
         </div>
       ) : null}
 
+      {profileSuccess ? (
+        <div className="discovery-success-banner" role="status">
+          {profileSuccess}
+        </div>
+      ) : null}
+
       <OverviewPanel
         targets={targets}
         selectedTarget={selectedTarget}
@@ -2828,7 +2867,7 @@ export function DiscoveryPage() {
           onCancel={() => setShowAddTargetModal(false)}
           onCreateProfile={() => {
             setShowAddTargetModal(false)
-            setShowProfileComposer(true)
+            void openProfileComposer()
           }}
         />
       ) : null}

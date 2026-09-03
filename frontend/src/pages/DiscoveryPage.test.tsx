@@ -158,6 +158,11 @@ describe('DiscoveryPage', () => {
         transport_types: ['ssh'],
         provider_reference: 'cisco-prod',
       })
+      const payload = createCredentialProfile.mock.calls[0][0]
+      expect(payload).toHaveProperty('provider_reference', 'cisco-prod')
+      expect(payload).not.toHaveProperty('password')
+      expect(payload).not.toHaveProperty('secret')
+      expect(payload).not.toHaveProperty('token')
       expect(
         screen.getByText(/Environment secret provider/i),
       ).toBeInTheDocument()
@@ -1070,6 +1075,92 @@ describe('DiscoveryPage', () => {
 
     // Verify profiles list is refreshed
     expect(listCredentialProfiles).toHaveBeenCalled()
+  })
+
+  it('validates required profile fields before submitting', async () => {
+    listTargets.mockResolvedValue([])
+    listCredentialProfiles.mockResolvedValue([])
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /create credential profile/i }),
+    )
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/profile name/i), {
+      target: { value: 'Incomplete profile' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/vendor/i), {
+      target: { value: '' },
+    })
+    fireEvent.submit(dialog.querySelector('form') as HTMLFormElement)
+
+    expect(createCredentialProfile).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('alert'),
+    ).toHaveTextContent(/vendor, platform, and credential type are required/i)
+  })
+
+  it('does not allow unsupported transport combinations', async () => {
+    listTargets.mockResolvedValue([])
+    listCredentialProfiles.mockResolvedValue([])
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /create credential profile/i }),
+    )
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/credential type/i), {
+      target: { value: 'snmp_v2c' },
+    })
+
+    expect(within(dialog).getByRole('button', { name: 'SSH' })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: /SNMP/ })).toBeEnabled()
+  })
+
+  it('shows API errors and supports cancelling the composer', async () => {
+    listTargets.mockResolvedValue([])
+    listCredentialProfiles.mockResolvedValue([])
+    createCredentialProfile.mockRejectedValue(
+      new Error('Provider reference is invalid.'),
+    )
+
+    render(
+      <MemoryRouter>
+        <DiscoveryPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /create credential profile/i }),
+    )
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/profile name/i), {
+      target: { value: 'API error profile' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/secret reference/i), {
+      target: { value: 'env:INVALID' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/username/i), {
+      target: { value: 'netops' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: /save profile/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /provider reference is invalid/i,
+    )
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /cancel/i }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 
